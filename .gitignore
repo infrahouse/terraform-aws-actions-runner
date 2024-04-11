@@ -1,0 +1,8 @@
+/.idea/
+terraform.tfstate*
+.terraform.lock.hcl
+.terraform
+__pycache__
+*.zip
+terraform.tfvars
+.terraform.tfstate.lock.info
