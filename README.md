@@ -10,7 +10,7 @@ GitHub organization name, and Puppet environment. Those are required arguments.
 
 ```hcl
 module "actions-runner" {
-  source                   = "registry.infrahouse.com/infrahouse/cloud-init/aws"
+  source                   = "registry.infrahouse.com/infrahouse/actions-runner/aws"
   version                  = "~> 0.1"
   asg_min_size             = 1
   asg_max_size             = 1
