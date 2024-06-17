@@ -124,6 +124,12 @@ variable "puppet_root_directory" {
   default     = "/opt/puppet-code"
 }
 
+variable "role_name" {
+  description = "IAM role name that will be created and used by EC2 instances"
+  type        = string
+  default     = "actions-runner"
+}
+
 variable "subnet_ids" {
   description = "List of subnet ids where the actions runner instances will be created."
   type        = list(string)
