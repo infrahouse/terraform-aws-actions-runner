@@ -130,6 +130,12 @@ variable "role_name" {
   default     = "actions-runner"
 }
 
+variable "root_volume_size" {
+  description = "Root volume size in EC2 instance in Gigabytes"
+  type        = number
+  default     = 30
+}
+
 variable "subnet_ids" {
   description = "List of subnet ids where the actions runner instances will be created."
   type        = list(string)
