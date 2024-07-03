@@ -56,3 +56,12 @@ data "aws_vpc" "selected" {
 data "aws_secretsmanager_secret" "github_token" {
   arn = var.github_token_secret_arn
 }
+
+data "aws_ami" "selected" {
+  filter {
+    name = "image-id"
+    values = [
+      local.ami_id
+    ]
+  }
+}

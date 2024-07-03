@@ -61,9 +61,16 @@ resource "aws_launch_template" "actions-runner" {
   name_prefix   = "actions-runner-"
   instance_type = var.instance_type
   key_name      = var.keypair_name == null ? aws_key_pair.actions-runner.key_name : var.keypair_name
-  image_id      = var.ami_id == null ? data.aws_ami.ubuntu.id : var.ami_id
+  image_id      = local.ami_id
   iam_instance_profile {
     arn = module.instance-profile.instance_profile_arn
+  }
+  block_device_mappings {
+    device_name = data.aws_ami.selected.root_device_name
+    ebs {
+      volume_size           = var.root_volume_size
+      delete_on_termination = true
+    }
   }
   user_data = module.userdata.userdata
   vpc_security_group_ids = [
