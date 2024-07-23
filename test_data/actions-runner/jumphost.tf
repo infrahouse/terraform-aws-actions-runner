@@ -13,7 +13,7 @@ resource "aws_key_pair" "jumphost" {
 
 module "jumphost" {
   source                   = "registry.infrahouse.com/infrahouse/jumphost/aws"
-  version                  = "~> 2.3"
+  version                  = "~> 2.6"
   environment              = local.environment
   keypair_name             = aws_key_pair.test.key_name
   route53_zone_id          = data.aws_route53_zone.cicd.zone_id

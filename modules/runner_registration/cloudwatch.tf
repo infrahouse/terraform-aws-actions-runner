@@ -5,7 +5,8 @@ resource "aws_cloudwatch_event_rule" "scale" {
     {
       "source" : ["aws.autoscaling"],
       "detail-type" : [
-        "EC2 Instance-terminate Lifecycle Action"
+        "EC2 Instance-terminate Lifecycle Action",
+        "EC2 Instance-launch Lifecycle Action",
       ],
       "detail" : {
         "AutoScalingGroupName" : [
@@ -16,7 +17,7 @@ resource "aws_cloudwatch_event_rule" "scale" {
   )
 }
 
-resource "aws_cloudwatch_event_target" "scale-out" {
+resource "aws_cloudwatch_event_target" "scale-in-out" {
   arn  = aws_lambda_function.main.arn
   rule = aws_cloudwatch_event_rule.scale.name
 }

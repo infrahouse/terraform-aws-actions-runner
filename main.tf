@@ -9,21 +9,18 @@ resource "random_string" "profile-suffix" {
 
 module "instance-profile" {
   source       = "registry.infrahouse.com/infrahouse/instance-profile/aws"
-  version      = "~> 1.3"
+  version      = "1.5.1"
   permissions  = data.aws_iam_policy_document.required_permissions.json
   profile_name = "actions-runner-${random_string.profile-suffix.result}"
   role_name    = var.role_name
   extra_policies = merge(
-    {
-      required : aws_iam_policy.required.arn
-    },
     var.extra_policies
   )
 }
 
 module "userdata" {
   source                   = "registry.infrahouse.com/infrahouse/cloud-init/aws"
-  version                  = "~> 1.11"
+  version                  = "1.12.4"
   environment              = var.environment
   role                     = "gha_runner"
   puppet_debug_logging     = var.puppet_debug_logging
@@ -43,6 +40,7 @@ module "userdata" {
   extra_repos = var.extra_repos
   custom_facts = {
     labels : var.extra_labels
+    registration_token_secret_prefix : local.registration_token_secret_prefix
   }
 }
 
@@ -84,6 +82,11 @@ resource "random_string" "asg_name" {
   special = false
 }
 
+resource "random_string" "reg_token_suffix" {
+  length  = 6
+  special = false
+}
+
 locals {
   asg_name = "${aws_launch_template.actions-runner.name}-${random_string.asg_name.result}"
 }
@@ -99,8 +102,11 @@ resource "aws_autoscaling_group" "actions-runner" {
     version = aws_launch_template.actions-runner.latest_version
   }
 
-  lifecycle {
-    create_before_destroy = true
+  initial_lifecycle_hook {
+    lifecycle_transition = "autoscaling:EC2_INSTANCE_LAUNCHING"
+    name                 = "launching"
+    heartbeat_timeout    = local.lifecycle_hook_wait_time
+    default_result       = "ABANDON"
   }
 
   instance_refresh {
@@ -114,6 +120,12 @@ resource "aws_autoscaling_group" "actions-runner" {
     key                 = "Name"
     propagate_at_launch = true
     value               = "actions-runner"
+  }
+
+  tag {
+    key                 = "lambda_name"
+    propagate_at_launch = true
+    value               = module.registration.lambda_name
   }
 
   dynamic "tag" {
