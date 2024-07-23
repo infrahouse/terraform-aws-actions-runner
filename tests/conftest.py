@@ -82,7 +82,7 @@ def service_network(boto3_session):
             dedent(
                 f"""
                 role_arn = "{TEST_ROLE_ARN}"
-                region = "{REGION}"
+                region   = "{REGION}"
                 """
             )
         )

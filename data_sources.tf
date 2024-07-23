@@ -1,3 +1,6 @@
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
 data "aws_iam_policy_document" "required_permissions" {
   statement {
     actions = [
@@ -12,7 +15,7 @@ data "aws_iam_policy_document" "required_permissions" {
       "secretsmanager:GetSecretValue"
     ]
     resources = [
-      data.aws_secretsmanager_secret.github_token.arn
+      "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:${local.registration_token_secret_prefix}-*"
     ]
   }
 }

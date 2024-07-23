@@ -66,6 +66,16 @@ data "aws_iam_policy_document" "lambda-permissions" {
       data.aws_secretsmanager_secret.github_token.arn
     ]
   }
+  statement {
+    actions = [
+      "secretsmanager:CreateSecret",
+      "secretsmanager:DeleteSecret",
+      "secretsmanager:PutSecretValue",
+    ]
+    resources = [
+      "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:${var.registration_token_secret_prefix}-*"
+    ]
+  }
 }
 
 resource "aws_iam_policy" "lambda_logging" {
@@ -81,7 +91,7 @@ resource "aws_iam_policy" "lambda_permissions" {
 }
 
 resource "aws_iam_role" "lambda" {
-  name_prefix        = "deregister-${var.github_org_name}"
+  name_prefix        = "${var.github_org_name}-registration"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 }
 
@@ -103,16 +113,17 @@ resource "aws_iam_role_policy_attachment" "lambda_permissions" {
 resource "aws_lambda_function" "main" {
   s3_bucket     = aws_s3_bucket.lambda_tmp.bucket
   s3_key        = aws_s3_object.lambda_package.key
-  function_name = "deregister_${var.asg_name}"
+  function_name = "${var.asg_name}_registration"
   role          = aws_iam_role.lambda.arn
   handler       = "main.lambda_handler"
 
-  runtime = "python3.9"
+  runtime = "python3.12"
   timeout = 30
   environment {
     variables = {
       "GITHUB_ORG_NAME" : var.github_org_name,
       "GITHUB_TOKEN_SECRET" : var.github_token_secret,
+      "REGISTRATION_TOKEN_SECRET_PREFIX" : var.registration_token_secret_prefix
     }
   }
   depends_on = [
@@ -120,7 +131,7 @@ resource "aws_lambda_function" "main" {
   ]
 }
 
-resource "aws_lambda_function_event_invoke_config" "update_dns" {
+resource "aws_lambda_function_event_invoke_config" "runner_registration" {
   function_name          = aws_lambda_function.main.function_name
   maximum_retry_attempts = 0
 }

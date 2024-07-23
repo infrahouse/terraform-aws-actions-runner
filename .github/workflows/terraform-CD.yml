@@ -5,7 +5,7 @@ on:  # yamllint disable-line rule:truthy
   push:
     # Pattern matched against refs/tags
     tags:
-      - "*"           # Push events to every tag not containing /
+      - "*"
 
 permissions:
   id-token: write  # This is required for requesting the JWT
@@ -21,7 +21,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 60
-    # Use the Bash shell regardless whether the GitHub Actions runner is ubuntu-latest, macos-latest, or windows-latest
     defaults:
       run:
         shell: bash
