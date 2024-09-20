@@ -1,7 +1,7 @@
 locals {
   default_module_tags = {
     environment : var.environment
-    service : var.service_name
+    service : "actions-runner"
     account : data.aws_caller_identity.current.account_id
     created_by_module : "infrahouse/actions-runner/aws"
   }
