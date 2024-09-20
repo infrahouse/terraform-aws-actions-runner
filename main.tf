@@ -52,7 +52,7 @@ resource "tls_private_key" "actions-runner" {
 resource "aws_key_pair" "actions-runner" {
   key_name_prefix = "actions-runner-generated-"
   public_key      = tls_private_key.actions-runner.public_key_openssh
-  tags            = local.tags
+  tags            = local.default_module_tags
 }
 
 resource "aws_launch_template" "actions-runner" {
@@ -74,7 +74,22 @@ resource "aws_launch_template" "actions-runner" {
   vpc_security_group_ids = [
     aws_security_group.actions-runner.id
   ]
-  tags = local.tags
+  tags = local.default_module_tags
+  tag_specifications {
+    resource_type = "volume"
+    tags = merge(
+      data.aws_default_tags.provider.tags,
+      local.default_module_tags
+    )
+  }
+  tag_specifications {
+    resource_type = "network-interface"
+    tags = merge(
+      data.aws_default_tags.provider.tags,
+      local.default_module_tags
+    )
+  }
+
 }
 
 resource "random_string" "asg_name" {
@@ -129,7 +144,10 @@ resource "aws_autoscaling_group" "actions-runner" {
   }
 
   dynamic "tag" {
-    for_each = local.tags
+    for_each = merge(
+      local.default_module_tags,
+      data.aws_default_tags.provider.tags
+    )
     content {
       key                 = tag.key
       propagate_at_launch = true

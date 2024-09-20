@@ -15,6 +15,7 @@ resource "aws_cloudwatch_event_rule" "scale" {
       }
     }
   )
+  tags = var.tags
 }
 
 resource "aws_cloudwatch_event_target" "scale-in-out" {
@@ -25,4 +26,5 @@ resource "aws_cloudwatch_event_target" "scale-in-out" {
 resource "aws_cloudwatch_log_group" "lambda" {
   name              = "/aws/lambda/${aws_lambda_function.main.function_name}"
   retention_in_days = 14
+  tags              = var.tags
 }
