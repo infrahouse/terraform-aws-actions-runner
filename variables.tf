@@ -82,6 +82,12 @@ variable "environment" {
   type        = string
 }
 
+variable "max_instance_lifetime_days" {
+  description = "The maximum amount of time, in _days_, that an instance can be in service, values must be either equal to 0 or between 7 and 365 days."
+  type        = number
+  default     = 30
+}
+
 variable "packages" {
   description = "List of packages to install when the instances bootstraps."
   type        = list(string)
