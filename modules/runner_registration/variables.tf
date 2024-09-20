@@ -14,3 +14,5 @@ variable "github_token_secret" {
 variable "registration_token_secret_prefix" {
   description = "Secret name prefix that will store a registration token"
 }
+
+variable "tags" {}

@@ -82,17 +82,20 @@ resource "aws_iam_policy" "lambda_logging" {
   name_prefix = "lambda_logging"
   description = "IAM policy for logging from a lambda"
   policy      = data.aws_iam_policy_document.lambda_logging.json
+  tags        = var.tags
 }
 
 resource "aws_iam_policy" "lambda_permissions" {
   name_prefix = "lambda_permissions"
   description = "IAM policy for a lambda permissions"
   policy      = data.aws_iam_policy_document.lambda-permissions.json
+  tags        = var.tags
 }
 
 resource "aws_iam_role" "lambda" {
   name_prefix        = "${var.github_org_name}-registration"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
+  tags               = var.tags
 }
 
 resource "aws_iam_role_policy_attachment" "AWSLambdaBasicExecutionRole" {
@@ -129,6 +132,7 @@ resource "aws_lambda_function" "main" {
   depends_on = [
     data.archive_file.lambda,
   ]
+  tags = var.tags
 }
 
 resource "aws_lambda_function_event_invoke_config" "runner_registration" {
