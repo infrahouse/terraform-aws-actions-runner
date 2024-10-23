@@ -5,7 +5,8 @@ data "aws_default_tags" "provider" {}
 data "aws_iam_policy_document" "required_permissions" {
   statement {
     actions = [
-      "autoscaling:DescribeAutoScalingInstances"
+      "autoscaling:DescribeAutoScalingInstances",
+      "autoscaling:SetInstanceHealth"
     ]
     resources = [
       aws_autoscaling_group.actions-runner.arn
