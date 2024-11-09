@@ -7,15 +7,13 @@ from infrahouse_toolkit.terraform import terraform_apply
 from tests.conftest import (
     LOG,
     TRACE_TERRAFORM,
-    DESTROY_AFTER,
     TEST_ZONE,
-    TEST_ROLE_ARN,
     REGION,
     TERRAFORM_ROOT_DIR,
 )
 
 
-def test_module(service_network):
+def test_module(service_network, jumphost, test_role_arn, keep_after, github_token):
     subnet_public_ids = service_network["subnet_public_ids"]["value"]
     subnet_private_ids = service_network["subnet_private_ids"]["value"]
 
@@ -24,9 +22,10 @@ def test_module(service_network):
         fp.write(
             dedent(
                 f"""
-                    region    = "{REGION}"
-                    role_arn  = "{TEST_ROLE_ARN}"
-                    test_zone = "{TEST_ZONE}"
+                    region       = "{REGION}"
+                    role_arn     = "{test_role_arn}"
+                    test_zone    = "{TEST_ZONE}"
+                    github_token = "{github_token}"
 
                     subnet_public_ids  = {json.dumps(subnet_public_ids)}
                     subnet_private_ids = {json.dumps(subnet_private_ids)}
@@ -36,7 +35,7 @@ def test_module(service_network):
 
     with terraform_apply(
         terraform_module_dir,
-        destroy_after=DESTROY_AFTER,
+        destroy_after=not keep_after,
         json_output=True,
         enable_trace=TRACE_TERRAFORM,
     ) as tf_output:
