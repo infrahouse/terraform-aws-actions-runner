@@ -107,11 +107,12 @@ locals {
 }
 
 resource "aws_autoscaling_group" "actions-runner" {
-  name                  = local.asg_name
-  min_size              = var.asg_min_size == null ? length(var.subnet_ids) : var.asg_min_size
-  max_size              = var.asg_max_size == null ? length(var.subnet_ids) + 1 : var.asg_max_size
-  vpc_zone_identifier   = var.subnet_ids
-  max_instance_lifetime = var.max_instance_lifetime_days * 24 * 3600
+  name                      = local.asg_name
+  min_size                  = var.asg_min_size == null ? length(var.subnet_ids) : var.asg_min_size
+  max_size                  = var.asg_max_size == null ? length(var.subnet_ids) + 1 : var.asg_max_size
+  vpc_zone_identifier       = var.subnet_ids
+  max_instance_lifetime     = var.max_instance_lifetime_days * 24 * 3600
+  health_check_grace_period = 900
   launch_template {
     id      = aws_launch_template.actions-runner.id
     version = aws_launch_template.actions-runner.latest_version

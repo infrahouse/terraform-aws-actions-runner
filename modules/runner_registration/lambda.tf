@@ -124,12 +124,13 @@ resource "aws_lambda_function" "main" {
   handler       = "main.lambda_handler"
 
   runtime = "python3.12"
-  timeout = 30
+  timeout = var.lambda_timeout
   environment {
     variables = {
       "GITHUB_ORG_NAME" : var.github_org_name,
       "GITHUB_TOKEN_SECRET" : var.github_token_secret,
       "REGISTRATION_TOKEN_SECRET_PREFIX" : var.registration_token_secret_prefix
+      "LAMBDA_TIMEOUT" : var.lambda_timeout
     }
   }
   depends_on = [
