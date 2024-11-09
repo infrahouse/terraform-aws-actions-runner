@@ -127,7 +127,7 @@ def wait_until_not_busy(
 ):
     """Wait until the runner is done with its active job."""
 
-    with timeout(environ["LAMBDA_TIMEOUT"]):
+    with timeout(int(environ["LAMBDA_TIMEOUT"])):
         while True:
             response = get(
                 f"https://api.github.com/orgs/{org_name}/actions/runners/{runner_id}",
