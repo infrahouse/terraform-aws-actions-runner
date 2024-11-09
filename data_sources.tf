@@ -6,7 +6,6 @@ data "aws_iam_policy_document" "required_permissions" {
   statement {
     actions = [
       "autoscaling:DescribeAutoScalingInstances",
-      "autoscaling:RecordLifecycleActionHeartbeat",
       "autoscaling:SetInstanceHealth"
     ]
     resources = [

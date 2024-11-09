@@ -38,7 +38,10 @@ data "aws_iam_policy_document" "lambda_logging" {
 
 data "aws_iam_policy_document" "lambda-permissions" {
   statement {
-    actions = ["autoscaling:CompleteLifecycleAction"]
+    actions = [
+      "autoscaling:CompleteLifecycleAction",
+      "autoscaling:RecordLifecycleActionHeartbeat",
+    ]
     resources = [
       local.asg_arn
     ]
