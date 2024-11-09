@@ -1,3 +1,8 @@
+variable "allowed_drain_time" {
+  description = "How many seconds to give a running job to finish after the instance fails health checks. Maximum allowed value is 900 seconds."
+  type        = number
+  default     = 900
+}
 variable "ami_id" {
   description = "AMI id for EC2 instances. By default, latest Ubuntu var.ubuntu_codename."
   type        = string
