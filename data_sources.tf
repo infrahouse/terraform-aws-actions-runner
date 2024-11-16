@@ -17,7 +17,18 @@ data "aws_iam_policy_document" "required_permissions" {
       "secretsmanager:GetSecretValue"
     ]
     resources = [
-      "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:${local.registration_token_secret_prefix}-*"
+      join(
+        ":",
+        [
+          "arn",
+          "aws",
+          "secretsmanager",
+          data.aws_region.current.name,
+          data.aws_caller_identity.current.account_id,
+          "secret",
+          "${local.registration_token_secret_prefix}-*"
+        ]
+      )
     ]
   }
 }
@@ -56,10 +67,6 @@ data "aws_subnet" "selected" {
 
 data "aws_vpc" "selected" {
   id = data.aws_subnet.selected.vpc_id
-}
-
-data "aws_secretsmanager_secret" "github_token" {
-  arn = var.github_token_secret_arn
 }
 
 data "aws_ami" "selected" {

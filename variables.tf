@@ -3,6 +3,7 @@ variable "allowed_drain_time" {
   type        = number
   default     = 900
 }
+
 variable "ami_id" {
   description = "AMI id for EC2 instances. By default, latest Ubuntu var.ubuntu_codename."
   type        = string
@@ -67,8 +68,20 @@ variable "instance_type" {
 }
 
 variable "github_token_secret_arn" {
-  description = "ARN of a secret that stores GitHub token."
+  description = "ARN of a secret that stores GitHub token. Either github_token_secret_arn or github_app_pem_secret_arn is required."
   type        = string
+  default     = null
+}
+
+variable "github_app_id" {
+  description = "GitHub App that gives out GitHub tokens for Terraform. Required if github_app_pem_secret_arn is not null. For instance, https://github.com/organizations/infrahouse/settings/apps/infrahouse-github-terraform"
+  default     = null
+}
+
+variable "github_app_pem_secret_arn" {
+  description = "ARN of a secret that stores GitHub App PEM key. Either github_token_secret_arn or github_app_pem_secret_arn is required."
+  type        = string
+  default     = null
 }
 
 variable "github_org_name" {
