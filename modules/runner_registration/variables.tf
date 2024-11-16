@@ -7,8 +7,18 @@ variable "github_org_name" {
   description = "GitHub organization name."
 }
 
-variable "github_token_secret" {
-  description = "Secretsmanager secret name with the GitHub token."
+variable "github_credentials" {
+  description = "A secret and its type to auth in Github."
+  type = object(
+    {
+      type : string   # Can be either "token" or "pem"
+      secret : string # ARN where either is stored
+    }
+  )
+}
+
+variable "github_app_id" {
+  description = "GitHub App that gives out GitHub tokens for Terraform. For instance, https://github.com/organizations/infrahouse/settings/apps/infrahouse-github-terraform"
 }
 
 variable "lambda_timeout" {

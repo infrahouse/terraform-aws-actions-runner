@@ -5,7 +5,3 @@ data "aws_route53_zone" "cicd" {
 data "aws_availability_zones" "available" {
   state = "available"
 }
-
-data "external" "env" {
-  program = ["bash", "${path.module}/env.sh"]
-}

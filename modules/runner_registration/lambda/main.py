@@ -4,7 +4,9 @@ from os import environ
 from time import sleep
 
 import boto3
-from requests import get, delete, post
+from github import GithubIntegration
+from github.Consts import MAX_JWT_EXPIRY
+from requests import delete, get, post
 
 
 @contextmanager
@@ -169,11 +171,10 @@ def remove_all_labels(org_name, github_token, runner_id):
 
 
 def deregister_runner(
-    org_name, github_token_secret, instance_id, registration_token_secret, runner_id
+    org_name, github_token, instance_id, registration_token_secret, runner_id
 ):
     """Remove the instance from DNS."""
     print(f"De-registering runner {instance_id} from {org_name}")
-    github_token = get_secret(github_token_secret)
     response = delete(
         f"https://api.github.com/orgs/{org_name}/actions/runners/{runner_id}",
         headers={
@@ -223,18 +224,55 @@ def get_instance_hostname(instance_id) -> str:
 
 def register_runner(
     gh_org_name,
-    gh_token_secret,
+    github_token,
     autoscalinggroupname,
     instance_id,
     registration_token_secret,
 ):
-    token = get_registration_token(gh_org_name, get_secret(gh_token_secret))
+    token = get_registration_token(gh_org_name, github_token)
     # save the registration token in a secret
     secretsmanager_client = boto3.client("secretsmanager")
     secretsmanager_client.create_secret(
         Name=registration_token_secret,
         Description=f"GitHub Actions runner registration token for ASG {autoscalinggroupname}:{instance_id}",
         SecretString=token,
+    )
+
+
+def _get_org_name(github_client, installation_id):
+    url = f"https://api.github.com/app/installations/{installation_id}"
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {github_client.create_jwt()}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    response = get(url, headers=headers, timeout=600)
+    return response.json()["account"]["login"]
+
+
+def get_tmp_token(pem_key_secret: str, github_org_name: str) -> str:
+    """
+    Generate a temporary GitHub token from GitHUb App PEM key
+
+    :param pem_key_secret: Secret ARN with the PEM key.
+    :type pem_key_secret: str
+    :param github_org_name: GitHub Organization. Used to find GitHub App installation.
+    :return: GitHub token
+    :rtype: str
+    """
+    gh_app_id = environ["GH_APP_ID"]
+    github_client = GithubIntegration(
+        gh_app_id, get_secret(pem_key_secret), jwt_expiry=MAX_JWT_EXPIRY
+    )
+    for installation in github_client.get_installations():
+        if installation.target_type == "Organization":
+            if github_org_name == _get_org_name(github_client, installation.id):
+                return github_client.get_access_token(
+                    installation_id=installation.id
+                ).token
+
+    raise RuntimeError(
+        f"Could not find installation of {gh_app_id} in organization {github_org_name}"
     )
 
 
@@ -252,15 +290,18 @@ def lambda_handler(event, context):
             registration_token_secret = (
                 f"{registration_token_secret_prefix}-{instance_id}"
             )
+            github_org_name = environ["GITHUB_ORG_NAME"]
 
             if lifecycle_transition == "autoscaling:EC2_INSTANCE_TERMINATING":
-                github_token = get_secret(environ["GITHUB_TOKEN_SECRET"])
-                runner_id = get_runner_id(
-                    environ["GITHUB_ORG_NAME"], github_token, instance_id
+                github_token = (
+                    get_secret(environ["GITHUB_SECRET"])
+                    if environ["GITHUB_SECRET_TYPE"] == "token"
+                    else get_tmp_token(environ["GITHUB_SECRET"], github_org_name)
                 )
-                remove_all_labels(environ["GITHUB_ORG_NAME"], github_token, runner_id)
+                runner_id = get_runner_id(github_org_name, github_token, instance_id)
+                remove_all_labels(github_org_name, github_token, runner_id)
                 wait_until_not_busy(
-                    environ["GITHUB_ORG_NAME"],
+                    github_org_name,
                     github_token,
                     runner_id,
                     lifecyclehookname=event["detail"]["LifecycleHookName"],
@@ -269,16 +310,21 @@ def lambda_handler(event, context):
                     instanceid=event["detail"]["EC2InstanceId"],
                 )
                 deregister_runner(
-                    environ["GITHUB_ORG_NAME"],
-                    environ["GITHUB_TOKEN_SECRET"],
+                    github_org_name,
+                    github_token,
                     instance_id,
                     registration_token_secret,
                     runner_id,
                 )
             if lifecycle_transition == "autoscaling:EC2_INSTANCE_LAUNCHING":
+                github_token = (
+                    get_secret(environ["GITHUB_SECRET"])
+                    if environ["GITHUB_SECRET_TYPE"] == "token"
+                    else get_tmp_token(environ["GITHUB_SECRET"], github_org_name)
+                )
                 register_runner(
-                    gh_org_name=environ["GITHUB_ORG_NAME"],
-                    gh_token_secret=environ["GITHUB_TOKEN_SECRET"],
+                    gh_org_name=github_org_name,
+                    github_token=github_token,
                     autoscalinggroupname=asg_name,
                     instance_id=instance_id,
                     registration_token_secret=registration_token_secret,

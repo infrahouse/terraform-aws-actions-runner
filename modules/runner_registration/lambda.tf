@@ -65,9 +65,7 @@ data "aws_iam_policy_document" "lambda-permissions" {
     actions = [
       "secretsmanager:GetSecretValue"
     ]
-    resources = [
-      data.aws_secretsmanager_secret.github_token.arn
-    ]
+    resources = [var.github_credentials.secret]
   }
   statement {
     actions = [
@@ -76,7 +74,18 @@ data "aws_iam_policy_document" "lambda-permissions" {
       "secretsmanager:PutSecretValue",
     ]
     resources = [
-      "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:${var.registration_token_secret_prefix}-*"
+      join(
+        ":",
+        [
+          "arn",
+          "aws",
+          "secretsmanager",
+          data.aws_region.current.name,
+          data.aws_caller_identity.current.account_id,
+          "secret",
+          "${var.registration_token_secret_prefix}-*"
+        ]
+      )
     ]
   }
 }
@@ -128,7 +137,9 @@ resource "aws_lambda_function" "main" {
   environment {
     variables = {
       "GITHUB_ORG_NAME" : var.github_org_name,
-      "GITHUB_TOKEN_SECRET" : var.github_token_secret,
+      "GITHUB_SECRET" : var.github_credentials.secret,
+      "GITHUB_SECRET_TYPE" : var.github_credentials.type,
+      "GH_APP_ID" : var.github_app_id
       "REGISTRATION_TOKEN_SECRET_PREFIX" : var.registration_token_secret_prefix
       "LAMBDA_TIMEOUT" : var.lambda_timeout
     }
