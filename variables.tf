@@ -148,6 +148,11 @@ variable "puppet_root_directory" {
   default     = "/opt/puppet-code"
 }
 
+variable "python_version" {
+  description = "Python version to run lambda on. Must one of https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html"
+  default     = "python3.12"
+}
+
 variable "role_name" {
   description = "IAM role name that will be created and used by EC2 instances"
   type        = string
