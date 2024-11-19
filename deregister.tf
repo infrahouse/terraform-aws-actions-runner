@@ -10,4 +10,5 @@ module "registration" {
   lambda_timeout                   = var.allowed_drain_time
   tags                             = local.default_module_tags
   github_app_id                    = var.github_app_id
+  python_version                   = var.python_version
 }
