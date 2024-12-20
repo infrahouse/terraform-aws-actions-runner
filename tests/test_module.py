@@ -8,8 +8,6 @@ from infrahouse_toolkit.terraform import terraform_apply
 from tests.conftest import (
     LOG,
     TRACE_TERRAFORM,
-    TEST_ZONE,
-    REGION,
     TERRAFORM_ROOT_DIR,
     GITHUB_ORG_NAME,
     ensure_runners,
@@ -18,7 +16,10 @@ from tests.conftest import (
 )
 
 
-@pytest.mark.parametrize("secret_type", ["token", "pem"])
+@pytest.mark.parametrize(
+    "secret_type, ubuntu_codename",
+    [("token", "jammy"), ("pem", "jammy"), ("pem", "noble")],
+)
 def test_module(
     service_network,
     secretsmanager_client,
@@ -27,9 +28,11 @@ def test_module(
     github_token,
     github_app_pem_secret_arn,
     secret_type,
+    ubuntu_codename,
+    aws_region,
+    test_zone_name,
 ):
     subnet_public_ids = service_network["subnet_public_ids"]["value"]
-    subnet_private_ids = service_network["subnet_private_ids"]["value"]
 
     if secret_type == "token":
         assert github_token, "Set GitHub token value with --github-token CLI argument."
@@ -43,16 +46,24 @@ def test_module(
         fp.write(
             dedent(
                 f"""
-                    region          = "{REGION}"
-                    role_arn        = "{test_role_arn}"
-                    test_zone       = "{TEST_ZONE}"
+                    region          = "{aws_region}"
+                    test_zone       = "{test_zone_name}"
                     github_org_name = "{GITHUB_ORG_NAME}"
+                    ubuntu_codename = "{ubuntu_codename}"
 
-                    subnet_public_ids  = {json.dumps(subnet_public_ids)}
-                    subnet_private_ids = {json.dumps(subnet_private_ids)}
+                    subnet_ids  = {json.dumps(subnet_public_ids)}
                     """
             )
         )
+        if test_role_arn:
+            fp.write(
+                dedent(
+                    f"""
+                    role_arn        = "{test_role_arn}"
+                    """
+                )
+            )
+
         fp.write(
             f'github_token = "{github_token}"'
             if secret_type == "token"

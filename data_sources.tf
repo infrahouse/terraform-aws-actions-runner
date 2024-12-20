@@ -33,12 +33,17 @@ data "aws_iam_policy_document" "required_permissions" {
   }
 }
 
+locals {
+  ami_name_pattern = contains(
+    ["focal", "jammy"], var.ubuntu_codename
+  ) ? "ubuntu/images/hvm-ssd/ubuntu-${var.ubuntu_codename}-*" : "ubuntu/images/hvm-ssd-gp3/ubuntu-${var.ubuntu_codename}-*"
+}
 data "aws_ami" "ubuntu" {
   most_recent = true
 
   filter {
     name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-${var.ubuntu_codename}-*"]
+    values = [local.ami_name_pattern]
   }
 
   filter {

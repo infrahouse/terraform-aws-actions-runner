@@ -20,7 +20,7 @@ module "instance-profile" {
 
 module "userdata" {
   source                   = "registry.infrahouse.com/infrahouse/cloud-init/aws"
-  version                  = "1.12.4"
+  version                  = "1.15.0"
   environment              = var.environment
   role                     = "gha_runner"
   puppet_debug_logging     = var.puppet_debug_logging
@@ -29,6 +29,7 @@ module "userdata" {
   puppet_module_path       = var.puppet_module_path
   puppet_root_directory    = var.puppet_root_directory
   puppet_manifest          = var.puppet_manifest
+  ubuntu_codename          = var.ubuntu_codename
   packages = concat(
     var.packages,
     [
