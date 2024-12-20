@@ -1,6 +1,6 @@
 resource "aws_security_group" "actions-runner" {
   vpc_id      = data.aws_subnet.selected.vpc_id
-  name_prefix = "postfix"
+  name_prefix = "actions-runner"
   description = "Manage traffic to GitHub Actions runner"
   tags = merge(
     {

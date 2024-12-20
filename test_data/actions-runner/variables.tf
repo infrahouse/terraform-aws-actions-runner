@@ -1,6 +1,8 @@
 variable "region" {}
 variable "test_zone" {}
-variable "role_arn" {}
+variable "role_arn" {
+  default = null
+}
 variable "github_token" {
   default = null
 }
@@ -13,5 +15,5 @@ variable "github_app_id" {
 }
 
 
-variable "subnet_public_ids" {}
-variable "subnet_private_ids" {}
+variable "subnet_ids" {}
+variable "ubuntu_codename" {}
