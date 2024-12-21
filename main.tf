@@ -20,7 +20,7 @@ module "instance-profile" {
 
 module "userdata" {
   source                   = "registry.infrahouse.com/infrahouse/cloud-init/aws"
-  version                  = "1.15.0"
+  version                  = "1.16.0"
   environment              = var.environment
   role                     = "gha_runner"
   puppet_debug_logging     = var.puppet_debug_logging

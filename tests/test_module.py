@@ -18,7 +18,7 @@ from tests.conftest import (
 
 @pytest.mark.parametrize(
     "secret_type, ubuntu_codename",
-    [("token", "jammy"), ("pem", "jammy"), ("pem", "noble")],
+    [("token", "jammy"), ("pem", "jammy"), ("pem", "noble"), ("pem", "oracular")],
 )
 def test_module(
     service_network,

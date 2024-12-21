@@ -37,6 +37,7 @@ bootstrap: ## bootstrap the development environment
 clean: ## clean the repo from cruft
 	rm -rf .pytest_cache
 	find . -name '.terraform' -exec rm -fr {} +
+	find . -name '.terraform.lock.hcl' -exec rm {} +
 
 .PHONY: fmt
 fmt: format
