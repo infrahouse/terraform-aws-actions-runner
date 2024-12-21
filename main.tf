@@ -114,9 +114,28 @@ resource "aws_autoscaling_group" "actions-runner" {
   vpc_zone_identifier       = var.subnet_ids
   max_instance_lifetime     = var.max_instance_lifetime_days * 24 * 3600
   health_check_grace_period = 900
-  launch_template {
-    id      = aws_launch_template.actions-runner.id
-    version = aws_launch_template.actions-runner.latest_version
+  dynamic "launch_template" {
+    for_each = var.on_demand_base_capacity == null ? [1] : []
+    content {
+      id      = aws_launch_template.actions-runner.id
+      version = aws_launch_template.actions-runner.latest_version
+    }
+  }
+
+  dynamic "mixed_instances_policy" {
+    for_each = var.on_demand_base_capacity == null ? [] : [1]
+    content {
+      instances_distribution {
+        on_demand_base_capacity                  = var.on_demand_base_capacity
+        on_demand_percentage_above_base_capacity = 0
+      }
+      launch_template {
+        launch_template_specification {
+          launch_template_id = aws_launch_template.actions-runner.id
+          version            = aws_launch_template.actions-runner.latest_version
+        }
+      }
+    }
   }
 
   initial_lifecycle_hook {

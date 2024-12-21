@@ -22,6 +22,11 @@ variable "asg_max_size" {
   default     = null
 }
 
+variable "environment" {
+  description = "Environment name. Passed on as a puppet fact."
+  type        = string
+}
+
 variable "extra_files" {
   description = "Additional files to create on an instance."
   type = list(
@@ -95,15 +100,16 @@ variable "keypair_name" {
   default     = null
 }
 
-variable "environment" {
-  description = "Environment name. Passed on as a puppet fact."
-  type        = string
-}
-
 variable "max_instance_lifetime_days" {
   description = "The maximum amount of time, in _days_, that an instance can be in service, values must be either equal to 0 or between 7 and 365 days."
   type        = number
   default     = 30
+}
+
+variable "on_demand_base_capacity" {
+  description = "If specified, the ASG will request spot instances and this will be the minimal number of on-demand instances."
+  type        = number
+  default     = null
 }
 
 variable "packages" {
