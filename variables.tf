@@ -170,6 +170,10 @@ variable "subnet_ids" {
   type        = list(string)
 }
 
+variable "tags" {
+  description = "A map of tags to add to resources."
+  default     = {}
+}
 variable "ubuntu_codename" {
   description = "Ubuntu version to use for the actions runner."
   type        = string
