@@ -71,6 +71,10 @@ resource "aws_launch_template" "actions-runner" {
       delete_on_termination = true
     }
   }
+  metadata_options {
+    http_tokens   = "required"
+    http_endpoint = "enabled"
+  }
   user_data = module.userdata.userdata
   vpc_security_group_ids = [
     aws_security_group.actions-runner.id
