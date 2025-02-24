@@ -22,6 +22,12 @@ variable "asg_max_size" {
   default     = null
 }
 
+variable "cloudwatch_log_group_retention" {
+  description = "Number of days you want to retain log events in the log group."
+  default     = 365
+  type        = number
+}
+
 variable "environment" {
   description = "Environment name. Passed on as a puppet fact."
   type        = string

@@ -3,6 +3,12 @@ variable "asg_name" {
   type        = string
 }
 
+variable "cloudwatch_log_group_retention" {
+  description = "Number of days you want to retain log events in the log group."
+  default     = 365
+  type        = number
+}
+
 variable "github_org_name" {
   description = "GitHub organization name."
 }

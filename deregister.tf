@@ -1,7 +1,8 @@
 module "registration" {
-  source          = "./modules/runner_registration"
-  asg_name        = local.asg_name
-  github_org_name = var.github_org_name
+  source                         = "./modules/runner_registration"
+  asg_name                       = local.asg_name
+  cloudwatch_log_group_retention = var.cloudwatch_log_group_retention
+  github_org_name                = var.github_org_name
   github_credentials = {
     type : var.github_token_secret_arn != null ? "token" : "pem"
     secret : var.github_token_secret_arn != null ? var.github_token_secret_arn : var.github_app_pem_secret_arn
