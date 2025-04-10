@@ -3,6 +3,7 @@ data "aws_region" "current" {}
 data "aws_default_tags" "provider" {}
 
 data "aws_iam_policy_document" "required_permissions" {
+  source_policy_documents = [var.extra_instance_profile_permissions]
   statement {
     actions = [
       "autoscaling:DescribeAutoScalingInstances",
