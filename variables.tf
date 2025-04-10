@@ -198,3 +198,8 @@ variable "sns_topic_alarm_arn" {
   default     = null
 }
 
+variable "extra_instance_profile_permissions" {
+  description = "A JSON with a permissions policy document. The policy will be attached to the ASG instance profile."
+  type        = string
+  default     = null
+}
