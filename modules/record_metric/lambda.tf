@@ -39,27 +39,34 @@ data "aws_iam_policy_document" "lambda_logging" {
 data "aws_iam_policy_document" "lambda-permissions" {
   statement {
     actions = [
-      "autoscaling:CompleteLifecycleAction",
-      "autoscaling:RecordLifecycleActionHeartbeat",
+      "sts:GetCallerIdentity",
     ]
     resources = [
-      local.asg_arn
+      "*"
     ]
   }
   statement {
     actions = [
-      "ec2:DescribeInstances",
-      "ec2:DescribeTags"
+      "autoscaling:DescribeAutoScalingGroups",
     ]
-    resources = ["*"]
+    resources = [
+      "*"
+    ]
   }
   statement {
     actions = [
-      "ec2:CreateTags",
+      "cloudwatch:PutMetricData"
     ]
     resources = [
-      "arn:aws:ec2:*:${data.aws_caller_identity.current.account_id}:instance/*"
+      "*"
     ]
+    condition {
+      test = "StringEquals"
+      values = [
+        "GitHubRunners"
+      ]
+      variable = "cloudwatch:namespace"
+    }
   }
   statement {
     actions = [
@@ -67,32 +74,11 @@ data "aws_iam_policy_document" "lambda-permissions" {
     ]
     resources = [var.github_credentials.secret]
   }
-  statement {
-    actions = [
-      "secretsmanager:CreateSecret",
-      "secretsmanager:DeleteSecret",
-      "secretsmanager:PutSecretValue",
-    ]
-    resources = [
-      join(
-        ":",
-        [
-          "arn",
-          "aws",
-          "secretsmanager",
-          data.aws_region.current.name,
-          data.aws_caller_identity.current.account_id,
-          "secret",
-          "${var.registration_token_secret_prefix}-*"
-        ]
-      )
-    ]
-  }
 }
 
 resource "aws_iam_policy" "lambda_logging" {
   name_prefix = "lambda_logging"
-  description = "IAM policy for logging from a lambda"
+  description = "IAM policy for logging from a lambda ${aws_lambda_function.lambda.function_name}"
   policy      = data.aws_iam_policy_document.lambda_logging.json
   tags = merge(
     var.tags,
@@ -114,8 +100,8 @@ resource "aws_iam_policy" "lambda_permissions" {
   )
 }
 
-resource "aws_iam_role" "lambda" {
-  name_prefix        = "${var.github_org_name}-registration"
+resource "aws_iam_role" "iam_for_lambda" {
+  name_prefix        = "iam_for_lambda"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
   tags = merge(
     var.tags,
@@ -126,58 +112,51 @@ resource "aws_iam_role" "lambda" {
 }
 
 resource "aws_iam_role_policy_attachment" "AWSLambdaBasicExecutionRole" {
-  role       = aws_iam_role.lambda.name
+  role       = aws_iam_role.iam_for_lambda.name
   policy_arn = data.aws_iam_policy.AWSLambdaBasicExecutionRole.arn
 }
 
 resource "aws_iam_role_policy_attachment" "lambda_logs" {
-  role       = aws_iam_role.lambda.name
+  role       = aws_iam_role.iam_for_lambda.name
   policy_arn = aws_iam_policy.lambda_logging.arn
 }
 
 resource "aws_iam_role_policy_attachment" "lambda_permissions" {
   policy_arn = aws_iam_policy.lambda_permissions.arn
-  role       = aws_iam_role.lambda.name
+  role       = aws_iam_role.iam_for_lambda.name
 }
 
-resource "aws_lambda_function" "main" {
+resource "aws_lambda_function" "lambda" {
   s3_bucket     = var.lambda_bucket_name
   s3_key        = aws_s3_object.lambda_package.key
-  function_name = "${var.asg_name}_registration"
-  role          = aws_iam_role.lambda.arn
+  function_name = "record_metric_${var.asg_name}"
+  role          = aws_iam_role.iam_for_lambda.arn
   handler       = "main.lambda_handler"
 
-  runtime = var.python_version
+  runtime = "python3.12"
   timeout = var.lambda_timeout
-  environment {
-    variables = {
-      "GITHUB_ORG_NAME" : var.github_org_name,
-      "GITHUB_SECRET" : var.github_credentials.secret,
-      "GITHUB_SECRET_TYPE" : var.github_credentials.type,
-      "GH_APP_ID" : var.github_app_id
-      "REGISTRATION_TOKEN_SECRET_PREFIX" : var.registration_token_secret_prefix
-      "LAMBDA_TIMEOUT" : var.lambda_timeout
-    }
-  }
-  depends_on = [
-    data.archive_file.lambda,
-  ]
   tags = merge(
     var.tags,
     {
       "asg_name" : var.asg_name
     }
   )
+  environment {
+    variables = {
+      "ASG_NAME" : var.asg_name
+      "GITHUB_ORG_NAME" : var.github_org_name,
+      "GITHUB_SECRET" : var.github_credentials.secret,
+      "GITHUB_SECRET_TYPE" : var.github_credentials.type,
+      "GH_APP_ID" : var.github_app_id
+    }
+  }
+  depends_on = [
+    data.archive_file.lambda,
+    aws_s3_object.lambda_package,
+  ]
 }
 
-resource "aws_lambda_function_event_invoke_config" "runner_registration" {
-  function_name          = aws_lambda_function.main.function_name
+resource "aws_lambda_function_event_invoke_config" "update_filter" {
+  function_name          = aws_lambda_function.lambda.function_name
   maximum_retry_attempts = 0
-}
-
-resource "aws_lambda_permission" "allow_cloudwatch_asg_lifecycle_hook" {
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.main.function_name
-  principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.scale.arn
 }

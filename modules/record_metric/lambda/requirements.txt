@@ -1,0 +1,2 @@
+infrahouse-core ~= 0.7
+PyGithub ~= 2.4

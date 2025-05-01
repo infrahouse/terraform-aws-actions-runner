@@ -72,6 +72,12 @@ variable "extra_repos" {
   default = {}
 }
 
+variable "idle_runners_target_count" {
+  description = "How many idle runners to aim for in the autoscaling policy."
+  type = number
+  default = 1
+}
+
 variable "instance_type" {
   description = "EC2 Instance type"
   type        = string

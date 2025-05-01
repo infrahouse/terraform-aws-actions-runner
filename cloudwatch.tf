@@ -14,3 +14,20 @@ resource "aws_cloudwatch_metric_alarm" "cpu_utilization_alarm" {
     AutoScalingGroupName = aws_autoscaling_group.actions-runner.name
   }
 }
+
+module "record_metric" {
+  source                         = "./modules/record_metric"
+  asg_name                       = aws_autoscaling_group.actions-runner.name
+  asg_arn                        = aws_autoscaling_group.actions-runner.arn
+  cloudwatch_log_group_retention = var.cloudwatch_log_group_retention
+
+  github_org_name = var.github_org_name
+  github_credentials = {
+    type : var.github_token_secret_arn != null ? "token" : "pem"
+    secret : var.github_token_secret_arn != null ? var.github_token_secret_arn : var.github_app_pem_secret_arn
+  }
+  github_app_id = var.github_app_id
+
+  lambda_bucket_name = aws_s3_bucket.lambda_tmp.bucket
+  tags               = local.default_module_tags
+}

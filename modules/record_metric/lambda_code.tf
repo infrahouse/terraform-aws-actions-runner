@@ -1,10 +1,9 @@
 locals {
   lambda_root = "${path.module}/lambda"
 }
-
 resource "null_resource" "install_python_dependencies" {
   provisioner "local-exec" {
-    command = "bash ${path.module}/package_lambda.sh"
+    command = "bash ${path.module}/package.sh"
     environment = {
       TARGET_DIR        = local.lambda_root
       MODULE_DIR        = path.module
@@ -49,25 +48,4 @@ resource "aws_s3_object" "lambda_package" {
       "asg_name" : var.asg_name
     }
   )
-  provisioner "local-exec" {
-    interpreter = ["timeout", "60", "bash", "-c"]
-    command     = <<EOF
-aws sts get-caller-identity
-provider_account_id=${data.aws_caller_identity.current.account_id}
-provider_role_name=$(echo ${data.aws_caller_identity.current.arn} | awk -F/ '{ print $2}')
-provider_arn="arn:aws:iam::$provider_account_id:role/$provider_role_name"
-echo "provider's role = $provider_arn"
-while true
-do
-  ih-plan \
-    --bucket "${var.lambda_bucket_name}" \
-    --aws-assume-role-arn "$provider_arn" \
-    download \
-    "${basename(data.archive_file.lambda.output_path)}" \
-    /dev/null && break
-  echo 'Waiting until the archive is available'
-  sleep 1
-done
-EOF
-  }
 }
