@@ -8,7 +8,7 @@ resource "aws_key_pair" "test" {
 module "actions-runner" {
   source                    = "../.."
   asg_min_size              = 1
-  asg_max_size              = 1
+  asg_max_size              = 5
   subnet_ids                = var.subnet_ids
   environment               = local.environment
   github_org_name           = var.github_org_name
