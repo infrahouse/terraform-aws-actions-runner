@@ -101,7 +101,7 @@ resource "aws_iam_policy" "lambda_permissions" {
 }
 
 resource "aws_iam_role" "iam_for_lambda" {
-  name_prefix        = "iam_for_lambda"
+  name_prefix        = "${var.github_org_name}-registration"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
   tags = merge(
     var.tags,

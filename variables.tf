@@ -74,8 +74,8 @@ variable "extra_repos" {
 
 variable "idle_runners_target_count" {
   description = "How many idle runners to aim for in the autoscaling policy."
-  type = number
-  default = 1
+  type        = number
+  default     = 1
 }
 
 variable "instance_type" {
