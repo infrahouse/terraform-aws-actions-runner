@@ -125,7 +125,7 @@ variable "max_instance_lifetime_days" {
 }
 
 variable "on_demand_base_capacity" {
-  description = "If specified, the ASG will request spot instances and this will be the minimal number of on-demand instances."
+  description = "If specified, the ASG will request spot instances and this will be the minimal number of on-demand instances. Also, warm pool will be disabled."
   type        = number
   default     = null
 }

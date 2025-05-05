@@ -168,12 +168,15 @@ resource "aws_autoscaling_group" "actions-runner" {
     }
   }
 
-  warm_pool {
-    pool_state                  = "Hibernated"
-    min_size                    = var.warm_pool_min_size != null ? var.warm_pool_min_size : var.idle_runners_target_count + 1
-    max_group_prepared_capacity = var.warm_pool_max_size != null ? var.warm_pool_max_size : var.idle_runners_target_count + 1
-    instance_reuse_policy {
-      reuse_on_scale_in = true
+  dynamic "warm_pool" {
+    for_each = var.on_demand_base_capacity == null ? [1] : []
+    content {
+      pool_state                  = "Hibernated"
+      min_size                    = var.warm_pool_min_size != null ? var.warm_pool_min_size : var.idle_runners_target_count + 1
+      max_group_prepared_capacity = var.warm_pool_max_size != null ? var.warm_pool_max_size : var.idle_runners_target_count + 1
+      instance_reuse_policy {
+        reuse_on_scale_in = true
+      }
     }
   }
   tag {
