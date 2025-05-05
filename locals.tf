@@ -11,4 +11,7 @@ locals {
 
   ami_id                           = var.ami_id == null ? data.aws_ami.ubuntu.id : var.ami_id
   registration_token_secret_prefix = "GH-reg-token-${random_string.reg_token_suffix.result}"
+  registration_hookname            = "registration"
+  deregistration_hookname          = "deregistration"
+  bootstrap_hookname               = "bootstrap"
 }

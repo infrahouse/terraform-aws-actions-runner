@@ -3,11 +3,6 @@ variable "asg_name" {
   type        = string
 }
 
-variable "asg_arn" {
-  description = "Autoscaling group ARN"
-  type        = string
-}
-
 variable "cloudwatch_log_group_retention" {
   description = "Number of days you want to retain log events in the log group."
   default     = 365
@@ -32,6 +27,10 @@ variable "github_app_id" {
   description = "GitHub App that gives out GitHub tokens for Terraform. For instance, https://github.com/organizations/infrahouse/settings/apps/infrahouse-github-terraform"
 }
 
+variable "hook_name" {
+  description = "Complete this lifecycle hook name after de-registration"
+}
+
 variable "lambda_bucket_name" {
   description = "S3 bucket to store lambda code"
   type        = string
@@ -40,6 +39,10 @@ variable "lambda_bucket_name" {
 variable "lambda_timeout" {
   description = "Time in seconds to let lambda run."
   default     = 30
+}
+
+variable "registration_token_secret_prefix" {
+  description = "Secret name prefix that will store a registration token"
 }
 
 variable "python_version" {

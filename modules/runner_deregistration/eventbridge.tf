@@ -1,14 +1,14 @@
 # CloudWatch EventBridge Rule (every minute)
 
 locals {
-  factor = 1
+  factor = 5
   period = local.factor == 1 ? "minute" : "minutes"
 }
 
 resource "aws_cloudwatch_event_rule" "run_every" {
   name_prefix         = substr("${var.asg_name}-${local.factor}-${local.period}", 0, 38)
-  description         = "Trigger Lambda ${aws_lambda_function.lambda.function_name} every ${local.period}"
-  schedule_expression = "rate(1 ${local.period})"
+  description         = "Trigger Lambda ${aws_lambda_function.lambda.function_name} every ${local.factor} ${local.period}"
+  schedule_expression = "rate(${local.factor} ${local.period})"
   tags = merge(
     var.tags,
     {

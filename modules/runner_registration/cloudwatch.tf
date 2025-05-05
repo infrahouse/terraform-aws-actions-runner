@@ -1,11 +1,11 @@
 resource "aws_cloudwatch_event_rule" "scale" {
-  name_prefix = "asg-scale"
+  name_prefix = substr("${var.asg_name}-", 0, 38)
   description = "ASG lifecycle hook"
   event_pattern = jsonencode(
     {
       "source" : ["aws.autoscaling"],
       "detail-type" : [
-        "EC2 Instance-terminate Lifecycle Action",
+        # "EC2 Instance-terminate Lifecycle Action",
         "EC2 Instance-launch Lifecycle Action",
       ],
       "detail" : {

@@ -71,6 +71,7 @@ data "aws_iam_policy_document" "lambda-permissions" {
     actions = [
       "secretsmanager:CreateSecret",
       "secretsmanager:DeleteSecret",
+      "secretsmanager:DescribeSecret",
       "secretsmanager:PutSecretValue",
     ]
     resources = [
