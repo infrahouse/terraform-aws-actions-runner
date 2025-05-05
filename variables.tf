@@ -47,6 +47,12 @@ variable "extra_files" {
   default = []
 }
 
+variable "extra_instance_profile_permissions" {
+  description = "A JSON with a permissions policy document. The policy will be attached to the ASG instance profile."
+  type        = string
+  default     = null
+}
+
 variable "extra_labels" {
   description = "A list of strings to be added as actions runner labels."
   type        = list(string)
@@ -183,6 +189,12 @@ variable "root_volume_size" {
   default     = 30
 }
 
+variable "sns_topic_alarm_arn" {
+  description = "ARN of SNS topic for Cloudwatch alarms on base EC2 instance."
+  type        = string
+  default     = null
+}
+
 variable "subnet_ids" {
   description = "List of subnet ids where the actions runner instances will be created."
   type        = list(string)
@@ -198,14 +210,14 @@ variable "ubuntu_codename" {
   default     = "jammy"
 }
 
-variable "sns_topic_alarm_arn" {
-  description = "ARN of SNS topic for Cloudwatch alarms on base EC2 instance."
-  type        = string
+variable "warm_pool_min_size" {
+  description = "How many instances to keep in the warm pool. By default, as many as idle runners count target plus one."
+  type        = number
   default     = null
 }
 
-variable "extra_instance_profile_permissions" {
-  description = "A JSON with a permissions policy document. The policy will be attached to the ASG instance profile."
-  type        = string
+variable "warm_pool_max_size" {
+  description = "Max allowed number of instances in the warm pool. By default, as many as idle runners count target plus one."
+  type        = number
   default     = null
 }

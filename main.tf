@@ -20,7 +20,7 @@ module "instance-profile" {
 
 module "userdata" {
   source                   = "registry.infrahouse.com/infrahouse/cloud-init/aws"
-  version                  = "1.16.0"
+  version                  = "1.18.0"
   environment              = var.environment
   role                     = "gha_runner"
   puppet_debug_logging     = var.puppet_debug_logging
@@ -42,7 +42,11 @@ module "userdata" {
   custom_facts = {
     labels : var.extra_labels
     registration_token_secret_prefix : local.registration_token_secret_prefix
+    bootstrap_hookname : local.bootstrap_hookname
   }
+  post_runcmd = [
+    "ih-aws --verbose autoscaling complete ${local.bootstrap_hookname}"
+  ]
 }
 
 
@@ -69,6 +73,7 @@ resource "aws_launch_template" "actions-runner" {
     ebs {
       volume_size           = var.root_volume_size
       delete_on_termination = true
+      encrypted             = true
     }
   }
   metadata_options {
@@ -144,8 +149,15 @@ resource "aws_autoscaling_group" "actions-runner" {
 
   initial_lifecycle_hook {
     lifecycle_transition = "autoscaling:EC2_INSTANCE_LAUNCHING"
-    name                 = "launching"
-    heartbeat_timeout    = local.lifecycle_hook_wait_time
+    name                 = local.registration_hookname
+    heartbeat_timeout    = 300
+    default_result       = "ABANDON"
+  }
+
+  initial_lifecycle_hook {
+    lifecycle_transition = "autoscaling:EC2_INSTANCE_LAUNCHING"
+    name                 = local.bootstrap_hookname
+    heartbeat_timeout    = 3600
     default_result       = "ABANDON"
   }
 
@@ -156,6 +168,14 @@ resource "aws_autoscaling_group" "actions-runner" {
     }
   }
 
+  warm_pool {
+    pool_state                  = "Hibernated"
+    min_size                    = var.warm_pool_min_size != null ? var.warm_pool_min_size : var.idle_runners_target_count + 1
+    max_group_prepared_capacity = var.warm_pool_max_size != null ? var.warm_pool_max_size : var.idle_runners_target_count + 1
+    instance_reuse_policy {
+      reuse_on_scale_in = true
+    }
+  }
   tag {
     key                 = "Name"
     propagate_at_launch = true
@@ -179,16 +199,17 @@ resource "aws_autoscaling_group" "actions-runner" {
       value               = tag.value
     }
   }
+  depends_on = [
+    module.instance-profile
+  ]
 }
 
-locals {
-  lifecycle_hook_wait_time = 300
-}
 
 resource "aws_autoscaling_lifecycle_hook" "terminating" {
-  name                   = "terminating"
+  name                   = local.deregistration_hookname
   autoscaling_group_name = aws_autoscaling_group.actions-runner.name
   lifecycle_transition   = "autoscaling:EC2_INSTANCE_TERMINATING"
-  heartbeat_timeout      = local.lifecycle_hook_wait_time
-  default_result         = "ABANDON"
+  heartbeat_timeout      = 3600
+
+  default_result = "ABANDON"
 }

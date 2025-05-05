@@ -40,6 +40,7 @@ data "aws_iam_policy_document" "lambda-permissions" {
   statement {
     actions = [
       "sts:GetCallerIdentity",
+      "autoscaling:CompleteLifecycleAction"
     ]
     resources = [
       "*"
@@ -48,31 +49,37 @@ data "aws_iam_policy_document" "lambda-permissions" {
   statement {
     actions = [
       "autoscaling:DescribeAutoScalingGroups",
+      "autoscaling:DescribeAutoScalingInstances",
+      "autoscaling:DescribeWarmPool",
     ]
     resources = [
       "*"
     ]
-  }
-  statement {
-    actions = [
-      "cloudwatch:PutMetricData"
-    ]
-    resources = [
-      "*"
-    ]
-    condition {
-      test = "StringEquals"
-      values = [
-        "GitHubRunners"
-      ]
-      variable = "cloudwatch:namespace"
-    }
   }
   statement {
     actions = [
       "secretsmanager:GetSecretValue"
     ]
     resources = [var.github_credentials.secret]
+  }
+  statement {
+    actions = [
+      "secretsmanager:DeleteSecret"
+    ]
+    resources = [
+      join(
+        ":",
+        [
+          "arn",
+          "aws",
+          "secretsmanager",
+          data.aws_region.current.name,
+          data.aws_caller_identity.current.account_id,
+          "secret",
+          "${var.registration_token_secret_prefix}-*"
+        ]
+      )
+    ]
   }
 }
 
@@ -129,7 +136,7 @@ resource "aws_iam_role_policy_attachment" "lambda_permissions" {
 resource "aws_lambda_function" "lambda" {
   s3_bucket     = var.lambda_bucket_name
   s3_key        = aws_s3_object.lambda_package.key
-  function_name = "record_metric_${var.asg_name}"
+  function_name = "${var.asg_name}_deregistration"
   role          = aws_iam_role.iam_for_lambda.arn
   handler       = "main.lambda_handler"
 
@@ -144,6 +151,9 @@ resource "aws_lambda_function" "lambda" {
   environment {
     variables = {
       "ASG_NAME" : var.asg_name
+      "HOOK_NAME" : var.hook_name
+      "REGISTRATION_TOKEN_SECRET_PREFIX" : var.registration_token_secret_prefix
+
       "GITHUB_ORG_NAME" : var.github_org_name,
       "GITHUB_SECRET" : var.github_credentials.secret,
       "GITHUB_SECRET_TYPE" : var.github_credentials.type,

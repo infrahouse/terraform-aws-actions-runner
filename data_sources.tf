@@ -6,16 +6,38 @@ data "aws_iam_policy_document" "required_permissions" {
   source_policy_documents = var.extra_instance_profile_permissions != null ? [var.extra_instance_profile_permissions] : []
   statement {
     actions = [
+      "ec2:DescribeInstances",
       "autoscaling:DescribeAutoScalingInstances",
-      "autoscaling:SetInstanceHealth"
     ]
     resources = [
-      aws_autoscaling_group.actions-runner.arn
+      "*"
     ]
   }
   statement {
     actions = [
-      "secretsmanager:GetSecretValue"
+      "autoscaling:CompleteLifecycleAction",
+      "autoscaling:SetInstanceHealth",
+      "autoscaling:SetInstanceProtection",
+    ]
+    resources = [
+      join(
+        ":",
+        [
+          "arn",
+          "aws",
+          "autoscaling",
+          data.aws_region.current.name,
+          data.aws_caller_identity.current.account_id,
+          "autoScalingGroup",
+          "*",
+          "autoScalingGroupName/${local.asg_name}"
+        ]
+      )
+    ]
+  }
+  statement {
+    actions = [
+      "secretsmanager:GetSecretValue",
     ]
     resources = [
       join(
