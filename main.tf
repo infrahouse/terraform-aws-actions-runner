@@ -123,6 +123,7 @@ resource "aws_autoscaling_group" "actions-runner" {
   vpc_zone_identifier       = var.subnet_ids
   max_instance_lifetime     = var.max_instance_lifetime_days * 24 * 3600
   health_check_grace_period = 900
+  wait_for_capacity_timeout = "15m"
   dynamic "launch_template" {
     for_each = var.on_demand_base_capacity == null ? [1] : []
     content {
