@@ -30,7 +30,7 @@ def lambda_handler(event, context):
         )
     else:
         # Fall back to sweeping unused runners if no lifecycle hook is present
-        _clean_runners(gha)
+        _clean_runners(gha, environ["INSTALLATION_ID"])
 
 
 def _handle_deregistration_hook(hook_name, instance_id):
@@ -38,9 +38,14 @@ def _handle_deregistration_hook(hook_name, instance_id):
     asg = ASG(asg_name=asg_instance.asg_name)
     result = "ABANDON"
     try:
+        if asg_instance.lifecycle_state == "Warmed:Terminating:Wait":
+            # If the instance is terminating don't stop actions-runner, just complete the lifecycle
+            result = "CONTINUE"
+            return
+
         exit_code = asg_instance.execute_command(
             "/usr/bin/systemctl stop actions-runner.service",
-        )
+        )[0]
         result = "CONTINUE" if exit_code == 0 else "ABANDON"
 
     except TimeoutError as err:
@@ -67,8 +72,17 @@ def _get_github_token(org):
     )
 
 
-def _clean_runners(gha: GitHubActions):
-    for runner in gha.runners:
+def _clean_runners(gha: GitHubActions, installation_id: str):
+    """
+    Deregister GitHub Actions runners that are not running anymore (e.g. terminated).
+    Deregister only runners labeled with 'installation_id:<installation_id>'.
+
+    :param gha: GitHubActions object
+    :param installation_id: unique ID of the runners installed by the module.
+        Each runner has a label 'installation_id:<installation_id>'.
+    """
+    for runner in gha.find_runners_by_label(f"installation_id:{installation_id}"):
+        LOG.info("Found runner %s", runner.name)
         try:
             if ASGInstance(runner.instance_id).state == "terminated":
                 LOG.info(

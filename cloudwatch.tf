@@ -30,4 +30,5 @@ module "record_metric" {
 
   lambda_bucket_name = aws_s3_bucket.lambda_tmp.bucket
   tags               = local.default_module_tags
+  installation_id    = random_uuid.installation-id.result
 }
