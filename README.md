@@ -9,7 +9,7 @@ classic GitHub token or temporary tokens obtained via a GitHub App.
 ## What's New
 
 - **Spot Instances Support:** The module supports spot instances by enabling you to specify the minimum on-demand capacity via the `on_demand_base_capacity` variable.
-- **Warm Pool Support:** The module now supports warm pools, allowing you to pre-initialize instances using inputs such as `warm_pool_min_size` and `warm_pool_max_size`, along with configurations like `instance_type` and `on_demand_base_capacity` for enhanced scaling flexibility.
+- **Warm Pool Support:** The module now supports a warm pool, allowing you to pre-initialize instances.
 - **Bugfixes:**
     - Improved instance lifecycle management.
     - Prevent action runner jobs to be scheduled on instances going back to the warm pool.
