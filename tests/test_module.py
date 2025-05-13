@@ -33,6 +33,7 @@ def test_module(
     test_zone_name,
 ):
     subnet_public_ids = service_network["subnet_public_ids"]["value"]
+    subnet_private_ids = service_network["subnet_private_ids"]["value"]
 
     if secret_type == "token":
         assert github_token, "Set GitHub token value with --github-token CLI argument."
@@ -52,6 +53,7 @@ def test_module(
                     ubuntu_codename = "{ubuntu_codename}"
 
                     subnet_ids  = {json.dumps(subnet_public_ids)}
+                    lambda_subnet_ids  = {json.dumps(subnet_private_ids)}
                     """
             )
         )

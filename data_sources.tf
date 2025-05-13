@@ -105,3 +105,7 @@ data "aws_ami" "selected" {
     ]
   }
 }
+
+data "aws_iam_policy" "ssm" {
+  name = "AmazonSSMManagedInstanceCore"
+}

@@ -50,4 +50,14 @@ variable "python_version" {
   default     = "python3.12"
 }
 
+variable "security_group_ids" {
+  description = "List of security group ids where the lambda will be created."
+  type        = list(string)
+}
+
+variable "subnet_ids" {
+  description = "List of subnet ids where the actions runner instances will be created."
+  type        = list(string)
+}
+
 variable "tags" {}

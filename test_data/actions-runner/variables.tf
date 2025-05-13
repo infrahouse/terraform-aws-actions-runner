@@ -16,4 +16,5 @@ variable "github_app_id" {
 
 
 variable "subnet_ids" {}
+variable "lambda_subnet_ids" {}
 variable "ubuntu_codename" {}

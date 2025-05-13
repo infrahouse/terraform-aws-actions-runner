@@ -17,8 +17,9 @@ resource "aws_vpc_security_group_ingress_rule" "ssh" {
   to_port           = 22
   ip_protocol       = "tcp"
   cidr_ipv4         = data.aws_vpc.selected.cidr_block
-  tags = merge({
-    Name = "SSH access"
+  tags = merge(
+    {
+      Name = "SSH access"
     },
     local.default_module_tags
   )
@@ -31,8 +32,9 @@ resource "aws_vpc_security_group_ingress_rule" "icmp" {
   to_port           = -1
   ip_protocol       = "icmp"
   cidr_ipv4         = "0.0.0.0/0"
-  tags = merge({
-    Name = "ICMP traffic"
+  tags = merge(
+    {
+      Name = "ICMP traffic"
     },
     local.default_module_tags
   )

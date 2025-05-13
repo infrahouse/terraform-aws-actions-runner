@@ -48,6 +48,7 @@ format:  ## Use terraform fmt to format all files in the repo
 	terraform fmt -recursive
 	black tests \
 		modules/runner_registration/lambda/main.py \
+		modules/runner_deregistration/lambda/main.py \
 		modules/record_metric/lambda/main.py
 
 define BROWSER_PYSCRIPT

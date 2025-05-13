@@ -15,6 +15,10 @@ data "aws_iam_policy" "AWSLambdaBasicExecutionRole" {
   name = "AWSLambdaBasicExecutionRole"
 }
 
+data "aws_iam_policy" "AWSLambdaENIManagementAccess" {
+  name = "AWSLambdaENIManagementAccess"
+}
+
 data "aws_iam_policy_document" "lambda_logging" {
   statement {
     effect = "Allow"
@@ -45,6 +49,15 @@ data "aws_iam_policy_document" "lambda-permissions" {
     resources = [
       "*"
     ]
+  }
+  statement {
+    actions = [
+      "ec2:DescribeInstances",
+      "ec2:DescribeTags",
+      "ssm:SendCommand",
+      "ssm:GetCommandInvocation",
+    ]
+    resources = ["*"]
   }
   statement {
     actions = [
@@ -123,6 +136,11 @@ resource "aws_iam_role_policy_attachment" "AWSLambdaBasicExecutionRole" {
   policy_arn = data.aws_iam_policy.AWSLambdaBasicExecutionRole.arn
 }
 
+resource "aws_iam_role_policy_attachment" "AWSLambdaENIManagementAccess" {
+  role       = aws_iam_role.iam_for_lambda.name
+  policy_arn = data.aws_iam_policy.AWSLambdaENIManagementAccess.arn
+}
+
 resource "aws_iam_role_policy_attachment" "lambda_logs" {
   role       = aws_iam_role.iam_for_lambda.name
   policy_arn = aws_iam_policy.lambda_logging.arn
@@ -139,6 +157,10 @@ resource "aws_lambda_function" "lambda" {
   function_name = "${var.asg_name}_deregistration"
   role          = aws_iam_role.iam_for_lambda.arn
   handler       = "main.lambda_handler"
+  vpc_config {
+    security_group_ids = var.security_group_ids
+    subnet_ids         = var.subnet_ids
+  }
 
   runtime = var.python_version
   timeout = var.lambda_timeout
@@ -151,7 +173,6 @@ resource "aws_lambda_function" "lambda" {
   environment {
     variables = {
       "ASG_NAME" : var.asg_name
-      "HOOK_NAME" : var.hook_name
       "REGISTRATION_TOKEN_SECRET_PREFIX" : var.registration_token_secret_prefix
 
       "GITHUB_ORG_NAME" : var.github_org_name,
@@ -169,4 +190,11 @@ resource "aws_lambda_function" "lambda" {
 resource "aws_lambda_function_event_invoke_config" "update_filter" {
   function_name          = aws_lambda_function.lambda.function_name
   maximum_retry_attempts = 0
+}
+
+resource "aws_lambda_permission" "allow_cloudwatch_asg_lifecycle_hook" {
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.lambda.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.scale.arn
 }

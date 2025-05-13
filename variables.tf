@@ -200,6 +200,12 @@ variable "subnet_ids" {
   type        = list(string)
 }
 
+variable "lambda_subnet_ids" {
+  description = "List of subnet ids where the lambda function will run. The subnets must have NAT."
+  type        = list(string)
+  default     = null
+}
+
 variable "tags" {
   description = "A map of tags to add to resources."
   default     = {}
