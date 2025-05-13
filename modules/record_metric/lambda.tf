@@ -129,7 +129,7 @@ resource "aws_iam_role_policy_attachment" "lambda_permissions" {
 resource "aws_lambda_function" "lambda" {
   s3_bucket     = var.lambda_bucket_name
   s3_key        = aws_s3_object.lambda_package.key
-  function_name = "record_metric_${var.asg_name}"
+  function_name = "${var.asg_name}_record_metric"
   role          = aws_iam_role.iam_for_lambda.arn
   handler       = "main.lambda_handler"
 

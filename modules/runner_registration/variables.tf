@@ -34,7 +34,7 @@ variable "lambda_bucket_name" {
 
 variable "lambda_timeout" {
   description = "Time in seconds to let lambda run."
-  default     = 30
+  default     = 900
 }
 
 variable "python_version" {
@@ -43,6 +43,16 @@ variable "python_version" {
 
 variable "registration_token_secret_prefix" {
   description = "Secret name prefix that will store a registration token"
+}
+
+variable "security_group_ids" {
+  description = "List of security group ids where the lambda will be created."
+  type        = list(string)
+}
+
+variable "subnet_ids" {
+  description = "List of subnet ids where the actions runner instances will be created."
+  type        = list(string)
 }
 
 variable "tags" {}

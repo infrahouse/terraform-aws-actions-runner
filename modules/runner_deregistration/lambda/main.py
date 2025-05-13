@@ -1,10 +1,8 @@
 import logging
 from os import environ
-
+from botocore.exceptions import ClientError
 from infrahouse_core.aws.asg_instance import ASGInstance
-
-from infrahouse_core.github import GitHubActions, get_tmp_token
-
+from infrahouse_core.github import GitHubActions, get_tmp_token, GitHubAuth
 from infrahouse_core.aws import get_secret
 
 import boto3
@@ -13,73 +11,87 @@ from infrahouse_core.aws.asg import ASG
 LOG = logging.getLogger()
 LOG.setLevel(level=logging.INFO)
 
+HOOK_DEREGISTRATION = "deregistration"
+
 
 def lambda_handler(event, context):
     LOG.info(f"{event = }")
-    secretsmanager_client = boto3.client("secretsmanager")
-    asg_name = environ["ASG_NAME"]
-    asg = ASG(asg_name=asg_name)
-    hook_name = environ["HOOK_NAME"]
-
-    github_org_name = environ["GITHUB_ORG_NAME"]
-    github_token = (
-        get_secret(secretsmanager_client, environ["GITHUB_SECRET"])
-        if environ["GITHUB_SECRET_TYPE"] == "token"
-        else get_tmp_token(int(environ["GH_APP_ID"]), environ["GITHUB_SECRET"], github_org_name)
+    github = GitHubAuth(
+        _get_github_token(environ["GITHUB_ORG_NAME"]), environ["GITHUB_ORG_NAME"]
     )
-    gha = GitHubActions(github_token, github_org_name)
+    gha = GitHubActions(github)
 
-    for instance in asg.instances:
-        if instance.lifecycle_state == "Terminating:Wait":
-            _deregister_instance_id(gha, instance, asg, hook_name)
-
-    # Warm pool instances
-    client = boto3.client("autoscaling")
-    response = client.describe_warm_pool(AutoScalingGroupName=asg_name)
-    for item in response["Instances"]:
-        instance = ASGInstance(item["InstanceId"])
-        if instance.lifecycle_state == "Warmed:Terminating:Wait":
-            _deregister_instance_id(gha, instance, asg, hook_name)
-
-        elif instance.lifecycle_state == "Warmed:Pending:Wait":
-            """
-            This is a situation when the instance comes back to the warm pool.
-            """
-            asg.complete_lifecycle_action(
-                hook_name=hook_name,
-                instance_id=instance.instance_id
-            )
-            LOG.info(f"{instance.instance_id = }: Lifecycle hook {hook_name = } is successfully complete.")
+    if event["detail"].get("LifecycleHookName") == HOOK_DEREGISTRATION:
+        """
+        This even is received when an instance is about to be terminated or when it's re-entering the warm pool.
+        """
+        _handle_deregistration_hook(
+            HOOK_DEREGISTRATION, event["detail"]["EC2InstanceId"]
+        )
+    else:
+        # Fall back to sweeping unused runners if no lifecycle hook is present
+        _clean_runners(gha)
 
 
-def _deregister_instance_id(gha: GitHubActions, instance: ASGInstance, asg: ASG, hook_name):
-    runner = gha.find_runner_by_label(f"instance_id:{instance.instance_id}")
-    if runner:
-        if runner["status"] == "online" and runner["busy"]:
-            LOG.info(f"Runner {runner['name']} is busy")
-            return
-        else:
-            LOG.info(f"Runner {runner['name']} is offline or idle. Will deregister it.")
-            """deregister here"""
-            registration_token_secret_prefix = environ[
-                "REGISTRATION_TOKEN_SECRET_PREFIX"
-            ]
-            registration_token_secret = (
-                f"{registration_token_secret_prefix}-{instance.instance_id}"
-            )
-            gha.deregister_runner(
-                instance, runner["id"]
-            )
-            secretsmanager_client = boto3.client("secretsmanager")
+def _handle_deregistration_hook(hook_name, instance_id):
+    asg_instance = ASGInstance(instance_id=instance_id)
+    asg = ASG(asg_name=asg_instance.asg_name)
+    result = "ABANDON"
+    try:
+        exit_code = asg_instance.execute_command(
+            "/usr/bin/systemctl stop actions-runner.service",
+        )
+        result = "CONTINUE" if exit_code == 0 else "ABANDON"
 
-            secretsmanager_client.delete_secret(
-                SecretId=registration_token_secret, ForceDeleteWithoutRecovery=True
-            )
+    except TimeoutError as err:
+        LOG.error(err)
+        result = "ABANDON"
+
+    finally:
+        asg.complete_lifecycle_action(
+            hook_name=HOOK_DEREGISTRATION, result=result, instance_id=instance_id
+        )
+        LOG.info(
+            "Lifecycle hook %s for %s is complete with result %s.",
+            hook_name,
+            instance_id,
+            result,
+        )
+
+
+def _get_github_token(org):
+    return (
+        get_secret(boto3.client("secretsmanager"), environ["GITHUB_SECRET"])
+        if environ["GITHUB_SECRET_TYPE"] == "token"
+        else get_tmp_token(int(environ["GH_APP_ID"]), environ["GITHUB_SECRET"], org)
+    )
+
+
+def _clean_runners(gha: GitHubActions):
+    for runner in gha.runners:
+        try:
+            if ASGInstance(runner.instance_id).state == "terminated":
+                LOG.info(
+                    "Instance %s is terminated. Will deregister the runner %s.",
+                    runner.instance_id,
+                    runner.name,
+                )
+                gha.deregister_runner(runner)
+        except IndexError:
             LOG.info(
-                f"Registration token secret {registration_token_secret} is successfully removed."
+                "ASG lookup failed for instance %s (likely terminated). Will deregister the runner %s.",
+                runner.instance_id,
+                runner.name,
             )
-            asg.complete_lifecycle_action(
-                hook_name=hook_name,
-                instance_id=instance.instance_id
-            )
-            LOG.info(f"{instance.instance_id = }: Lifecycle hook {hook_name = } is successfully complete.")
+            gha.deregister_runner(runner)
+
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "InvalidInstanceID.NotFound":
+                LOG.info(
+                    "Instance %s doesn't exist. Will deregister the runner %s.",
+                    runner.instance_id,
+                    runner.name,
+                )
+                gha.deregister_runner(runner)
+            else:
+                raise  # re-raise for other unexpected errors

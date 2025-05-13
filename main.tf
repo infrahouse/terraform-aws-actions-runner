@@ -14,6 +14,9 @@ module "instance-profile" {
   profile_name = "actions-runner-${random_string.profile-suffix.result}"
   role_name    = var.role_name
   extra_policies = merge(
+    {
+      ssm : data.aws_iam_policy.ssm.arn
+    },
     var.extra_policies
   )
 }

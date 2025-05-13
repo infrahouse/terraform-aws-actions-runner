@@ -10,6 +10,7 @@ module "actions-runner" {
   asg_min_size              = 1
   asg_max_size              = 5
   subnet_ids                = var.subnet_ids
+  lambda_subnet_ids         = var.lambda_subnet_ids
   environment               = local.environment
   github_org_name           = var.github_org_name
   github_app_pem_secret_arn = var.github_app_pem_secret_arn
