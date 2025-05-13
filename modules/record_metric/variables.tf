@@ -32,6 +32,11 @@ variable "github_app_id" {
   description = "GitHub App that gives out GitHub tokens for Terraform. For instance, https://github.com/organizations/infrahouse/settings/apps/infrahouse-github-terraform"
 }
 
+variable "installation_id" {
+  description = "Unique identifier of runners created by the action-runner module. Each runner has a label 'installation_id:<installation_id>'."
+  type        = string
+}
+
 variable "lambda_bucket_name" {
   description = "S3 bucket to store lambda code"
   type        = string

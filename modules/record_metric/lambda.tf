@@ -148,6 +148,7 @@ resource "aws_lambda_function" "lambda" {
       "GITHUB_SECRET" : var.github_credentials.secret,
       "GITHUB_SECRET_TYPE" : var.github_credentials.type,
       "GH_APP_ID" : var.github_app_id
+      "INSTALLATION_ID" : var.installation_id
     }
   }
   depends_on = [

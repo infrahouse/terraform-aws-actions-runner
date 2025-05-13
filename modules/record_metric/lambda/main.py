@@ -31,15 +31,15 @@ def lambda_handler(event, context):
     """
     LOG.info(f"{event = }")
     asg_name = environ["ASG_NAME"]
-    asg = ASG(asg_name=asg_name)
     github = GitHubAuth(
         _get_github_token(environ["GITHUB_ORG_NAME"]), environ["GITHUB_ORG_NAME"]
     )
     gha = GitHubActions(github)
 
     status_counts = Counter()
-    for instance in asg.instances:
-        runner = gha.find_runner_by_label(f"instance_id:{instance.instance_id}")
+    for runner in gha.find_runners_by_label(
+        f"installation_id:{environ['INSTALLATION_ID']}"
+    ):
         if runner and runner.status == "online":
             status_counts["busy" if runner.busy else "idle"] += 1
 

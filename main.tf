@@ -7,6 +7,9 @@ resource "random_string" "profile-suffix" {
   special = false
 }
 
+resource "random_uuid" "installation-id" {
+}
+
 module "instance-profile" {
   source       = "registry.infrahouse.com/infrahouse/instance-profile/aws"
   version      = "1.5.1"
@@ -43,7 +46,14 @@ module "userdata" {
   extra_files = var.extra_files
   extra_repos = var.extra_repos
   custom_facts = {
-    labels : var.extra_labels
+    labels : concat(
+      [
+        "aws_region:${data.aws_region.current.name}",
+        "aws_account:${data.aws_caller_identity.current.account_id}",
+        "installation_id:${random_uuid.installation-id.result}",
+      ],
+      var.extra_labels
+    )
     registration_token_secret_prefix : local.registration_token_secret_prefix
     bootstrap_hookname : local.bootstrap_hookname
   }
@@ -125,7 +135,7 @@ resource "aws_autoscaling_group" "actions-runner" {
   max_size                  = var.asg_max_size == null ? length(var.subnet_ids) + 1 : var.asg_max_size
   vpc_zone_identifier       = var.subnet_ids
   max_instance_lifetime     = var.max_instance_lifetime_days * 24 * 3600
-  health_check_grace_period = 900
+  health_check_grace_period = 60
   wait_for_capacity_timeout = "15m"
   dynamic "launch_template" {
     for_each = var.on_demand_base_capacity == null ? [1] : []

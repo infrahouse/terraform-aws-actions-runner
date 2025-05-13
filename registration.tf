@@ -34,9 +34,9 @@ module "deregistration" {
   lambda_timeout                   = var.allowed_drain_time
   tags                             = local.default_module_tags
   python_version                   = var.python_version
-  hook_name                        = local.deregistration_hookname
   security_group_ids = [
     aws_security_group.actions-runner.id
   ]
-  subnet_ids = var.lambda_subnet_ids != null ? var.lambda_subnet_ids : var.subnet_ids
+  subnet_ids      = var.lambda_subnet_ids != null ? var.lambda_subnet_ids : var.subnet_ids
+  installation_id = random_uuid.installation-id.result
 }
