@@ -135,7 +135,7 @@ resource "aws_autoscaling_group" "actions-runner" {
   max_size                  = var.asg_max_size == null ? length(var.subnet_ids) + 1 : var.asg_max_size
   vpc_zone_identifier       = var.subnet_ids
   max_instance_lifetime     = var.max_instance_lifetime_days * 24 * 3600
-  health_check_grace_period = 60
+  health_check_grace_period = 0
   wait_for_capacity_timeout = "15m"
   dynamic "launch_template" {
     for_each = var.on_demand_base_capacity == null ? [1] : []
@@ -187,9 +187,9 @@ resource "aws_autoscaling_group" "actions-runner" {
     content {
       pool_state                  = "Hibernated"
       min_size                    = var.warm_pool_min_size != null ? var.warm_pool_min_size : var.idle_runners_target_count + 1
-      max_group_prepared_capacity = var.warm_pool_max_size != null ? var.warm_pool_max_size : var.idle_runners_target_count + 1
+      max_group_prepared_capacity = var.warm_pool_max_size != null ? var.warm_pool_max_size : var.asg_max_size
       instance_reuse_policy {
-        reuse_on_scale_in = true
+        reuse_on_scale_in = false
       }
     }
   }
@@ -227,6 +227,5 @@ resource "aws_autoscaling_lifecycle_hook" "terminating" {
   autoscaling_group_name = aws_autoscaling_group.actions-runner.name
   lifecycle_transition   = "autoscaling:EC2_INSTANCE_TERMINATING"
   heartbeat_timeout      = 3600
-
-  default_result = "ABANDON"
+  default_result         = "ABANDON"
 }
