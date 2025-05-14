@@ -111,27 +111,12 @@ def _handle_bootstrap_hook(
     instance_id = asg_instance.instance_id
     asg = ASG(asg_name=asg_instance.asg_name)
     label = f"instance_id:{instance_id}"
-    LOG.info("Looking for runner with label %s", label)
+    LOG.info("Looking for runner with label %s.", label)
     runner = gha.find_runner_by_label(label)
     if runner:
         result = "CONTINUE"
         try:
-            LOG.info("Found runner %s", runner.name)
-            with timeout(wait_timeout):
-                exit_code = asg_instance.execute_command(
-                    "/usr/local/bin/puppet-wrapper", execution_timeout=900
-                )[0]
-            result = "CONTINUE" if exit_code == 0 else "ABANDON"
-
-        except (
-            ClientError,
-            BotoCoreError,
-            GithubException,
-            RuntimeError,
-            TimeoutError,
-        ) as err:
-            result = "ABANDON"
-            LOG.error(err)
+            LOG.info("Found runner %s in GitHub.", runner.name)
 
         finally:
             asg.complete_lifecycle_action(
@@ -144,7 +129,12 @@ def _handle_bootstrap_hook(
                 result,
             )
     else:
-        LOG.warning("Couldn't find a runner labeled %s", label)
+        LOG.warning(
+            "Couldn't find a runner labeled %s. "
+            "It can be OK if the runner is provisioning the first time. "
+            "Then, puppet will complete the bootstrap hook.",
+            label,
+        )
 
 
 def _get_github_token(org):
