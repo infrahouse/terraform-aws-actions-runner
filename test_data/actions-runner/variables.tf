@@ -1,5 +1,4 @@
 variable "region" {}
-variable "test_zone" {}
 variable "role_arn" {
   default = null
 }
