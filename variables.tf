@@ -21,6 +21,11 @@ variable "asg_max_size" {
   type        = number
   default     = null
 }
+variable "autoscaling_step" {
+  description = "How many instances to add or remove when the autoscaling policy is triggered."
+  type        = number
+  default     = 1
+}
 
 variable "cloudwatch_log_group_retention" {
   description = "Number of days you want to retain log events in the log group."

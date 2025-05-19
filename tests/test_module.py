@@ -30,7 +30,6 @@ def test_module(
     secret_type,
     ubuntu_codename,
     aws_region,
-    test_zone_name,
 ):
     subnet_public_ids = service_network["subnet_public_ids"]["value"]
     subnet_private_ids = service_network["subnet_private_ids"]["value"]
@@ -48,7 +47,6 @@ def test_module(
             dedent(
                 f"""
                     region          = "{aws_region}"
-                    test_zone       = "{test_zone_name}"
                     github_org_name = "{GITHUB_ORG_NAME}"
                     ubuntu_codename = "{ubuntu_codename}"
 

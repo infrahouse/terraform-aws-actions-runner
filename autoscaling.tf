@@ -34,7 +34,7 @@ resource "aws_cloudwatch_metric_alarm" "idle_runners_high" {
 
 resource "aws_autoscaling_policy" "scale_out" {
   name                   = "scale-out-idle-runners"
-  scaling_adjustment     = 1
+  scaling_adjustment     = var.autoscaling_step
   adjustment_type        = "ChangeInCapacity"
   cooldown               = 0
   autoscaling_group_name = aws_autoscaling_group.actions-runner.name
@@ -43,7 +43,7 @@ resource "aws_autoscaling_policy" "scale_out" {
 
 resource "aws_autoscaling_policy" "scale_in" {
   name                   = "scale-in-idle-runners"
-  scaling_adjustment     = -1
+  scaling_adjustment     = -var.autoscaling_step
   adjustment_type        = "ChangeInCapacity"
   cooldown               = 180
   autoscaling_group_name = aws_autoscaling_group.actions-runner.name
