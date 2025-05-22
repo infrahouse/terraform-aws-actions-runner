@@ -39,6 +39,7 @@ module "userdata" {
   packages = concat(
     var.packages,
     [
+      "gh",
       "make",
       "python-is-python3",
     ]
