@@ -77,7 +77,8 @@ data "aws_iam_policy_document" "lambda-permissions" {
   }
   statement {
     actions = [
-      "secretsmanager:DeleteSecret"
+      "secretsmanager:DeleteSecret",
+      "secretsmanager:DescribeSecret"
     ]
     resources = [
       join(

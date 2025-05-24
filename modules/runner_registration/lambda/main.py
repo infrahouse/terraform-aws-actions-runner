@@ -77,7 +77,11 @@ def _handle_registration_hook(
     try:
         registration_token_secret_prefix = environ["REGISTRATION_TOKEN_SECRET_PREFIX"]
         registration_token_secret = f"{registration_token_secret_prefix}-{instance_id}"
-        gha.ensure_registration_token(registration_token_secret)
+        # if the instance is already registered, we don't need the token
+        gha.ensure_registration_token(
+            registration_token_secret,
+            present=gha.find_runner_by_label(f"instance_id:{instance_id}") is None,
+        )
         asg.complete_lifecycle_action(hook_name=hook_name, instance_id=instance_id)
         LOG.info(
             f"Lifecycle hook %s for %s is successfully complete.",

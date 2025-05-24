@@ -25,8 +25,13 @@ def lambda_handler(event, context):
         """
         This even is received when an instance is about to be terminated or when it's re-entering the warm pool.
         """
+        instance_id = event["detail"]["EC2InstanceId"]
+        gha.ensure_registration_token(
+            f"{environ['REGISTRATION_TOKEN_SECRET_PREFIX']}-{instance_id}",
+            present=False
+        )
         _handle_deregistration_hook(
-            HOOK_DEREGISTRATION, event["detail"]["EC2InstanceId"]
+            HOOK_DEREGISTRATION, instance_id
         )
     else:
         # Fall back to sweeping unused runners if no lifecycle hook is present
