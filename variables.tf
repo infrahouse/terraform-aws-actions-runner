@@ -21,10 +21,17 @@ variable "asg_max_size" {
   type        = number
   default     = null
 }
+
 variable "autoscaling_step" {
   description = "How many instances to add or remove when the autoscaling policy is triggered."
   type        = number
   default     = 1
+}
+
+variable "autoscaling_scaleout_evaluation_period" {
+  description = "The duration, in seconds, that the autoscaling policy will evaluate the scaling conditions before executing a scale-out action. This period helps to prevent unnecessary scaling by allowing time for metrics to stabilize after fluctuations. Default value is 60 seconds."
+  type        = number
+  default     = 60
 }
 
 variable "cloudwatch_log_group_retention" {
