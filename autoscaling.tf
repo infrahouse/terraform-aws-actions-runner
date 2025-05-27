@@ -36,7 +36,7 @@ resource "aws_autoscaling_policy" "scale_out" {
   name                   = "scale-out-idle-runners"
   scaling_adjustment     = var.autoscaling_step
   adjustment_type        = "ChangeInCapacity"
-  cooldown               = 0
+  cooldown               = var.autoscaling_scaleout_evaluation_period
   autoscaling_group_name = aws_autoscaling_group.actions-runner.name
   policy_type            = "SimpleScaling"
 }
