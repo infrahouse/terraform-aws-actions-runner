@@ -28,11 +28,9 @@ def lambda_handler(event, context):
         instance_id = event["detail"]["EC2InstanceId"]
         gha.ensure_registration_token(
             f"{environ['REGISTRATION_TOKEN_SECRET_PREFIX']}-{instance_id}",
-            present=False
+            present=False,
         )
-        _handle_deregistration_hook(
-            HOOK_DEREGISTRATION, instance_id
-        )
+        _handle_deregistration_hook(HOOK_DEREGISTRATION, instance_id)
     else:
         # Fall back to sweeping unused runners if no lifecycle hook is present
         _clean_runners(gha, environ["INSTALLATION_ID"])

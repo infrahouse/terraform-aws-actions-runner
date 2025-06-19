@@ -1,7 +1,7 @@
 resource "aws_cloudwatch_metric_alarm" "idle_runners_low" {
   alarm_name          = "IdleRunnersTooLow-${aws_autoscaling_group.actions-runner.name}"
   comparison_operator = "LessThanThreshold"
-  evaluation_periods  =  max(1, ceil(var.autoscaling_scaleout_evaluation_period / 60))
+  evaluation_periods  = max(1, ceil(var.autoscaling_scaleout_evaluation_period / 60))
   metric_name         = "IdleRunners"
   namespace           = "GitHubRunners"
   period              = 60
