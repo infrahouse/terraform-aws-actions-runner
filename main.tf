@@ -58,9 +58,12 @@ module "userdata" {
     registration_token_secret_prefix : local.registration_token_secret_prefix
     bootstrap_hookname : local.bootstrap_hookname
   }
-  post_runcmd = [
-    "ih-aws --verbose autoscaling complete ${local.bootstrap_hookname}"
-  ]
+  post_runcmd = concat(
+    var.post_runcmd,
+    [
+      "ih-aws --verbose autoscaling complete ${local.bootstrap_hookname}"
+    ]
+  )
 }
 
 

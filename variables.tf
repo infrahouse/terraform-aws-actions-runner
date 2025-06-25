@@ -148,6 +148,12 @@ variable "packages" {
   default     = []
 }
 
+variable "post_runcmd" {
+  description = "Commands to run after runcmd"
+  type        = list(string)
+  default     = []
+}
+
 variable "puppet_debug_logging" {
   description = "Enable debug logging if true."
   type        = bool
