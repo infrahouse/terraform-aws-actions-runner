@@ -210,6 +210,12 @@ resource "aws_autoscaling_group" "actions-runner" {
     value               = module.registration.lambda_name
   }
 
+  tag {
+    key                 = "module_version"
+    propagate_at_launch = true
+    value               = local.module_version
+  }
+
   dynamic "tag" {
     for_each = merge(
       local.default_module_tags,

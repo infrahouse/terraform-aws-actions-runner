@@ -1,4 +1,6 @@
 locals {
+  module_version = "2.16.0"
+
   default_module_tags = merge(
     {
       environment : var.environment

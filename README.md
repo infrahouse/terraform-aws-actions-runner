@@ -29,8 +29,9 @@ Either `github_token_secret_arn` or `github_app_pem_secret_arn` is required.
 
 ```hcl
 module "actions-runner" {
-  source                   = "registry.infrahouse.com/infrahouse/actions-runner/aws"
-  version                  = "~> 2.0"
+  source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
+  version = "2.16.0"
+
   asg_min_size             = 1
   asg_max_size             = 1
   subnet_ids               = var.subnet_private_ids
@@ -80,7 +81,7 @@ module "actions-runner" {
 | <a name="module_instance-profile"></a> [instance-profile](#module\_instance-profile) | registry.infrahouse.com/infrahouse/instance-profile/aws | 1.5.1 |
 | <a name="module_record_metric"></a> [record\_metric](#module\_record\_metric) | ./modules/record_metric | n/a |
 | <a name="module_registration"></a> [registration](#module\_registration) | ./modules/runner_registration | n/a |
-| <a name="module_userdata"></a> [userdata](#module\_userdata) | registry.infrahouse.com/infrahouse/cloud-init/aws | 1.18.0 |
+| <a name="module_userdata"></a> [userdata](#module\_userdata) | registry.infrahouse.com/infrahouse/cloud-init/aws | 2.0.0 |
 
 ## Resources
 
@@ -109,7 +110,7 @@ module "actions-runner" {
 | [random_uuid.installation-id](https://registry.terraform.io/providers/hashicorp/random/latest/docs/resources/uuid) | resource |
 | [tls_private_key.actions-runner](https://registry.terraform.io/providers/hashicorp/tls/latest/docs/resources/private_key) | resource |
 | [aws_ami.selected](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/ami) | data source |
-| [aws_ami.ubuntu](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/ami) | data source |
+| [aws_ami.ubuntu_pro](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/ami) | data source |
 | [aws_caller_identity.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/caller_identity) | data source |
 | [aws_default_tags.provider](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/default_tags) | data source |
 | [aws_iam_policy.ssm](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy) | data source |
