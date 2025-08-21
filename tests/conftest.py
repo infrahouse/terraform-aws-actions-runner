@@ -47,7 +47,9 @@ def github_app_pem_secret_arn(request):
     return request.config.getoption("--github-app-pem-secret")
 
 
-def ensure_runners(gha: GitHubActions, aws_region, timeout_time=900, test_role_arn=None):
+def ensure_runners(
+    gha: GitHubActions, aws_region, timeout_time=900, test_role_arn=None
+):
     try:
         with timeout(timeout_time):
             while True:
