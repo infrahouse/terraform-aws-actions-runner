@@ -132,6 +132,7 @@ resource "aws_lambda_function" "lambda" {
   function_name = "${var.asg_name}_record_metric"
   role          = aws_iam_role.iam_for_lambda.arn
   handler       = "main.lambda_handler"
+  architectures = [var.architecture]
 
   runtime = var.python_version
   timeout = var.lambda_timeout

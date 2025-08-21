@@ -10,6 +10,12 @@ variable "ami_id" {
   default     = null
 }
 
+variable "architecture" {
+  description = "The CPU architecture for the Lambda function; valid values are `x86_64` or `arm64`."
+  type        = string
+  default     = "x86_64"
+}
+
 variable "asg_min_size" {
   description = "Minimal number of EC2 instances in the ASG. By default, the number of subnets."
   type        = number

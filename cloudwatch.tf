@@ -20,6 +20,8 @@ module "record_metric" {
   asg_name                       = aws_autoscaling_group.actions-runner.name
   asg_arn                        = aws_autoscaling_group.actions-runner.arn
   cloudwatch_log_group_retention = var.cloudwatch_log_group_retention
+  architecture                   = var.architecture
+  python_version                 = var.python_version
 
   github_org_name = var.github_org_name
   github_credentials = {

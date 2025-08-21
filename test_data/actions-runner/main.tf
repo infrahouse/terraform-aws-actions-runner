@@ -7,8 +7,9 @@ resource "aws_key_pair" "test" {
 
 module "actions-runner" {
   source                    = "../.."
+  instance_type             = "t3a.small"
   asg_min_size              = 1
-  asg_max_size              = 5
+  asg_max_size              = var.asg_max_size
   subnet_ids                = var.subnet_ids
   lambda_subnet_ids         = var.lambda_subnet_ids
   environment               = local.environment
@@ -23,4 +24,6 @@ module "actions-runner" {
   extra_labels    = ["awesome"]
   github_app_id   = var.github_app_id
   ubuntu_codename = var.ubuntu_codename
+  architecture    = var.architecture
+  python_version  = var.python_version
 }

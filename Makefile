@@ -11,6 +11,9 @@ for line in sys.stdin:
 endef
 export PRINT_HELP_PYSCRIPT
 
+TEST_REGION="us-west-2"
+TEST_ROLE="arn:aws:iam::303467602807:role/actions-runner-tester"
+
 help: install-hooks
 	@python -c "$$PRINT_HELP_PYSCRIPT" < Makefile
 
@@ -50,6 +53,27 @@ format:  ## Use terraform fmt to format all files in the repo
 		modules/runner_registration/lambda/main.py \
 		modules/runner_deregistration/lambda/main.py \
 		modules/record_metric/lambda/main.py
+
+.PHONY: test-keep
+test-keep:  ## Run a test and keep resources
+	pytest -xvvs \
+		--aws-region=${TEST_REGION} \
+		--test-role-arn=${TEST_ROLE} \
+		-k token-noble \
+		--github-token $(GITHUB_TOKEN) \
+		--keep-after \
+		tests/test_module.py 2>&1 | tee pytest-$(shell date +%Y%m%d-%H%M%S)-output.log
+
+.PHONY: test-clean
+test-clean:  ## Run a test and destroy resources
+	pytest -xvvs \
+		--aws-region=${TEST_REGION} \
+		--test-role-arn=${TEST_ROLE} \
+		--github-token $(GITHUB_TOKEN) \
+		-k token-oracular \
+		tests/test_module.py 2>&1 | tee pytest-$(shell date +%Y%m%d-%H%M%S)-output.log
+
+#		-k token-noble \
 
 define BROWSER_PYSCRIPT
 import os, webbrowser, sys

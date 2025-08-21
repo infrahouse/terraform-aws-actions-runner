@@ -158,6 +158,7 @@ resource "aws_lambda_function" "main" {
   function_name = "${var.asg_name}_registration"
   role          = aws_iam_role.lambda.arn
   handler       = "main.lambda_handler"
+  architectures = [var.architecture]
   vpc_config {
     security_group_ids = var.security_group_ids
     subnet_ids         = var.subnet_ids
