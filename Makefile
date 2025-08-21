@@ -27,7 +27,10 @@ install-hooks:  ## Install repo hooks
 
 .PHONY: test
 test:  ## Run tests on the module
-	pytest -xvvs tests/
+		pytest -xvvs \
+			--test-role-arn=${TEST_ROLE} \
+			--github-token $(CI_TEST_TOKEN) \
+			tests/test_module.py
 
 
 .PHONY: bootstrap
