@@ -97,5 +97,5 @@ def test_module(
             )
         finally:
             if not keep_after:
-                for runner in gha.runners:
+                for runner in gha.find_runners_by_label("awesome"):
                     gha.deregister_runner(runner)

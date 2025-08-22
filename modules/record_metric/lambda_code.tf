@@ -3,7 +3,7 @@ locals {
 }
 resource "null_resource" "install_python_dependencies" {
   provisioner "local-exec" {
-    command = "bash -x ${path.module}/package.sh"
+    command = "bash ${path.module}/package.sh"
     environment = {
       ARCH              = var.architecture
       TARGET_DIR        = local.lambda_root
