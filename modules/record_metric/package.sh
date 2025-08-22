@@ -45,9 +45,6 @@ install_for_arch() {
   rm -rf "${dest}"
   mkdir -p "${dest}"
 
-  # Ensure modern pip to support --platform with --target
-  python3 -m pip install -q --upgrade "pip>=23.1" wheel
-
   # Install ONLY manylinux binary wheels for the requested platform & CPython ABI.
   # This avoids accidental source builds for macOS or musl (Alpine) artifacts.
   python3 -m pip install \
