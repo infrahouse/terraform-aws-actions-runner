@@ -33,7 +33,7 @@ data "archive_file" "lambda" {
   excludes = [
     "__pycache__"
   ]
-  source_dir  = "${local.lambda_root}/${local.norm_arch}"
+  source_dir  = local.lambda_root
   output_path = "${path.module}/${random_uuid.lamda_src_hash.result}.zip"
   depends_on = [
     null_resource.install_python_dependencies

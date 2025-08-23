@@ -39,11 +39,9 @@ plat_tag() {
 install_for_arch() {
   local arch="$1"
   local plat; plat="$(plat_tag "$arch")"
-  local dest="${OUT_DIR}/${arch}"
+  local dest="${OUT_DIR}"
 
   echo "==> Installing for arch=${arch} platform=${plat} python=${PY_VER} into ${dest}"
-  rm -rf "${dest}"
-  mkdir -p "${dest}"
 
   # Install ONLY manylinux binary wheels for the requested platform & CPython ABI.
   # This avoids accidental source builds for macOS or musl (Alpine) artifacts.
@@ -56,7 +54,6 @@ install_for_arch() {
     --upgrade \
     -r "${REQUIREMENTS_FILE}"
 
-  cp "$CODE_DIR/main.py" "${dest}"
   # Clean pyc caches
   find "${dest}" -type d -name "__pycache__" -exec rm -rf {} +
 }
@@ -71,10 +68,9 @@ main() {
 
   install_for_arch "${a}"
 
-  echo "==> Done. Output in ${OUT_DIR}/(aarch64|x86_64)"
+  echo "==> Done. Output in ${OUT_DIR}"
   echo "Tip: package as a Lambda Layer zip, e.g.:"
-  echo "  (cd ${OUT_DIR}/aarch64 && zip -r ../layer-aarch64.zip .)"
-  echo "  (cd ${OUT_DIR}/x86_64 && zip -r ../layer-x86_64.zip .)"
+  echo "  (cd ${OUT_DIR} && zip -r ../layer-${a}.zip .)"
 }
 
 main "$@"
