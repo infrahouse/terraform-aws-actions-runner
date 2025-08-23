@@ -1,6 +1,8 @@
 locals {
   module_version = "2.17.0"
 
+  lts_codenames = ["noble"]
+
   default_module_tags = merge(
     {
       environment : var.environment
@@ -10,9 +12,13 @@ locals {
     },
     var.tags
   )
-  ami_name_pattern_pro = "ubuntu-pro-server/images/hvm-ssd-gp3/ubuntu-${var.ubuntu_codename}-*"
+  ami_name_pattern = contains(local.lts_codenames, var.ubuntu_codename) ? (
+    "ubuntu-pro-server/images/hvm-ssd-gp3/ubuntu-${var.ubuntu_codename}-*"
+    ) : (
+    "ubuntu/images/hvm-ssd-gp3/ubuntu-${var.ubuntu_codename}-*"
+  )
 
-  ami_id                           = var.ami_id == null ? data.aws_ami.ubuntu_pro.id : var.ami_id
+  ami_id                           = var.ami_id == null ? data.aws_ami.ubuntu.id : var.ami_id
   registration_token_secret_prefix = "GH-reg-token-${random_string.reg_token_suffix.result}"
   registration_hookname            = "registration"
   deregistration_hookname          = "deregistration"

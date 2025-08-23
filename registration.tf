@@ -13,6 +13,7 @@ module "registration" {
   lambda_timeout                   = var.allowed_drain_time
   tags                             = local.default_module_tags
   python_version                   = var.python_version
+  architecture                     = var.architecture
   security_group_ids = [
     aws_security_group.actions-runner.id
   ]
@@ -34,6 +35,7 @@ module "deregistration" {
   lambda_timeout                   = var.allowed_drain_time
   tags                             = local.default_module_tags
   python_version                   = var.python_version
+  architecture                     = var.architecture
   security_group_ids = [
     aws_security_group.actions-runner.id
   ]

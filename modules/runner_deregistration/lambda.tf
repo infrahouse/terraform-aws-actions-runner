@@ -158,6 +158,7 @@ resource "aws_lambda_function" "lambda" {
   function_name = "${var.asg_name}_deregistration"
   role          = aws_iam_role.iam_for_lambda.arn
   handler       = "main.lambda_handler"
+  architectures = [var.architecture]
   vpc_config {
     security_group_ids = var.security_group_ids
     subnet_ids         = var.subnet_ids

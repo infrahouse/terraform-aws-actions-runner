@@ -1,3 +1,9 @@
+variable "architecture" {
+  description = "The CPU architecture for the Lambda function; valid values are `x86_64` or `arm64`."
+  type        = string
+  default     = "x86_64"
+}
+
 variable "asg_name" {
   description = "Autoscaling group name"
   type        = string

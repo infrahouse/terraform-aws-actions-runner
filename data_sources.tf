@@ -56,12 +56,12 @@ data "aws_iam_policy_document" "required_permissions" {
   }
 }
 
-data "aws_ami" "ubuntu_pro" {
+data "aws_ami" "ubuntu" {
   most_recent = true
 
   filter {
     name   = "name"
-    values = [local.ami_name_pattern_pro]
+    values = [local.ami_name_pattern]
   }
 
   filter {

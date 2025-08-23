@@ -1,4 +1,3 @@
-import json
 from time import sleep
 
 import pytest
@@ -7,18 +6,16 @@ import logging
 
 from github import GithubIntegration
 from github.Consts import MAX_JWT_EXPIRY
-from infrahouse_toolkit.logging import setup_logging
-from infrahouse_toolkit.timeout import timeout
+from infrahouse_core.aws.asg import ASG
+from infrahouse_core.aws.asg_instance import ASGInstance
+from infrahouse_core.github import GitHubActions, GitHubAuth
+from infrahouse_core.logging import setup_logging
+from infrahouse_core.timeout import timeout
+from pytest_infrahouse.plugin import aws_region
 from requests import get
 
-# "303467602807" is our test account
-TEST_ACCOUNT = "303467602807"
-# TEST_ROLE_ARN = "arn:aws:iam::303467602807:role/actions-runner-tester"
-DEFAULT_PROGRESS_INTERVAL = 10
-TRACE_TERRAFORM = False
-UBUNTU_CODENAME = "jammy"
 
-LOG = logging.getLogger(__name__)
+LOG = logging.getLogger()
 GITHUB_ORG_NAME = "infrahouse"
 TERRAFORM_ROOT_DIR = "test_data"
 GH_APP_ID = 1016363
@@ -50,24 +47,39 @@ def github_app_pem_secret_arn(request):
     return request.config.getoption("--github-app-pem-secret")
 
 
-def ensure_runners(token, timeout_time=900):
+def ensure_runners(
+    gha: GitHubActions, aws_region, timeout_time=900, test_role_arn=None
+):
     try:
         with timeout(timeout_time):
             while True:
                 try:
-                    response = get(
-                        f"https://api.github.com/orgs/{GITHUB_ORG_NAME}/actions/runners",
-                        headers={
-                            "Accept": "application/vnd.github+json",
-                            "Authorization": f"Bearer {token}",
-                            "X-GitHub-Api-Version": "2022-11-28",
-                        },
-                        timeout=30,
+                    runners = gha.find_runners_by_label("awesome")
+                    LOG.info("Found %d runners", len(runners))
+                    assert len(runners) > 0
+
+                    LOG.info(
+                        "Using runner %s (%s) to seed autoscaling instance.",
+                        runners[0].name,
+                        runners[0].instance_id,
                     )
-                    response.raise_for_status()
-                    runners = response.json()["runners"]
-                    print(json.dumps(runners, indent=4))
-                    assert len([r for r in runners if r["status"] == "online"]) > 0
+                    asg_instance = ASGInstance(
+                        runners[0].instance_id,
+                        role_arn=test_role_arn,
+                        region=aws_region,
+                    )
+                    asg = ASG(
+                        asg_instance.asg_name, role_arn=test_role_arn, region=aws_region
+                    )
+                    wait_for_instance_refreshes(asg, refresh_wait_timeout=timeout_time)
+
+                    for instance in asg.instances:
+                        LOG.info("Checking instance %s", instance.instance_id)
+                        runner = gha.find_runner_by_label(
+                            f"instance_id:{instance.instance_id}"
+                        )
+                        assert runner.status == "online"
+
                     break
                 except AssertionError:
                     LOG.info("No registered runners yet")
@@ -75,6 +87,31 @@ def ensure_runners(token, timeout_time=900):
     except TimeoutError:
         LOG.error("No registered runners after %d seconds.", timeout_time)
         assert False
+
+
+def wait_for_instance_refreshes(asg: ASG, refresh_wait_timeout=300):
+    complete = {
+        "Successful",
+        "Failed",
+        "Cancelled",
+        "RollbackFailed",
+        "RollbackSuccessful",
+    }
+    with timeout(refresh_wait_timeout):
+        while True:
+            refreshes = list(asg.instance_refreshes)  # snapshot current statuses
+            if not refreshes:
+                LOG.info("No instance refreshes found.")
+                return
+
+            # We are done only if *all* refreshes are in a complete state
+            all_done = all(ir.get("Status") in complete for ir in refreshes)
+
+            if all_done:
+                return
+
+            LOG.info("Waiting for instance refreshes to complete...")
+            sleep(5)
 
 
 def get_secret(secretsmanager_client, secret_name):

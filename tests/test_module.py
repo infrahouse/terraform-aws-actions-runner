@@ -1,13 +1,15 @@
 import json
+import platform
+import sys
 from os import path as osp
 from textwrap import dedent
 
 import pytest
-from infrahouse_toolkit.terraform import terraform_apply
+from infrahouse_core.github import GitHubActions, GitHubAuth
+from pytest_infrahouse import terraform_apply
 
 from tests.conftest import (
     LOG,
-    TRACE_TERRAFORM,
     TERRAFORM_ROOT_DIR,
     GITHUB_ORG_NAME,
     ensure_runners,
@@ -18,7 +20,7 @@ from tests.conftest import (
 
 @pytest.mark.parametrize(
     "secret_type, ubuntu_codename",
-    [("token", "noble"), ("pem", "noble"), ("pem", "oracular")],
+    [("token", "noble"), ("token", "oracular")],
 )
 def test_module(
     service_network,
@@ -43,6 +45,7 @@ def test_module(
 
     terraform_module_dir = osp.join(TERRAFORM_ROOT_DIR, "actions-runner")
     with open(osp.join(terraform_module_dir, "terraform.tfvars"), "w") as fp:
+        asg_max_size = 2
         fp.write(
             dedent(
                 f"""
@@ -50,8 +53,11 @@ def test_module(
                     github_org_name = "{GITHUB_ORG_NAME}"
                     ubuntu_codename = "{ubuntu_codename}"
 
-                    subnet_ids  = {json.dumps(subnet_public_ids)}
+                    subnet_ids         = {json.dumps(subnet_public_ids)}
                     lambda_subnet_ids  = {json.dumps(subnet_private_ids)}
+                    architecture       = "{platform.machine()}"
+                    python_version     = "python{sys.version_info.major}.{sys.version_info.minor}"
+                    asg_max_size = {asg_max_size}
                     """
             )
         )
@@ -79,11 +85,17 @@ def test_module(
         terraform_module_dir,
         destroy_after=not keep_after,
         json_output=True,
-        enable_trace=TRACE_TERRAFORM,
     ) as tf_output:
         LOG.info("%s", json.dumps(tf_output, indent=4))
-        ensure_runners(
-            github_token
-            if secret_type == "token"
-            else get_tmp_token(secretsmanager_client, github_app_pem_secret_arn)
-        )
+        gha = GitHubActions(GitHubAuth(github_token, GITHUB_ORG_NAME))
+        try:
+            ensure_runners(
+                gha,
+                aws_region,
+                timeout_time=900 + asg_max_size * 300,
+                test_role_arn=test_role_arn,
+            )
+        finally:
+            if not keep_after:
+                for runner in gha.find_runners_by_label("awesome"):
+                    gha.deregister_runner(runner)

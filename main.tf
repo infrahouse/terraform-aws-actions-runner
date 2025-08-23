@@ -176,7 +176,7 @@ resource "aws_autoscaling_group" "actions-runner" {
   initial_lifecycle_hook {
     lifecycle_transition = "autoscaling:EC2_INSTANCE_LAUNCHING"
     name                 = local.bootstrap_hookname
-    heartbeat_timeout    = 3600
+    heartbeat_timeout    = 1200
     default_result       = "ABANDON"
   }
 
@@ -230,6 +230,9 @@ resource "aws_autoscaling_group" "actions-runner" {
   depends_on = [
     module.instance-profile
   ]
+  timeouts {
+    delete = "30m"
+  }
 }
 
 

@@ -5,6 +5,7 @@ resource "null_resource" "install_python_dependencies" {
   provisioner "local-exec" {
     command = "bash ${path.module}/package.sh"
     environment = {
+      ARCH              = var.architecture
       TARGET_DIR        = local.lambda_root
       MODULE_DIR        = path.module
       REQUIREMENTS_FILE = "${local.lambda_root}/requirements.txt"
@@ -31,7 +32,7 @@ data "archive_file" "lambda" {
   excludes = [
     "__pycache__"
   ]
-  source_dir  = local.lambda_root
+  source_dir  = "${local.lambda_root}/${local.norm_arch}"
   output_path = "${path.module}/${random_uuid.lamda_src_hash.result}.zip"
   depends_on = [
     null_resource.install_python_dependencies
