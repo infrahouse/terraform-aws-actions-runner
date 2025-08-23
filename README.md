@@ -110,7 +110,7 @@ module "actions-runner" {
 | [random_uuid.installation-id](https://registry.terraform.io/providers/hashicorp/random/latest/docs/resources/uuid) | resource |
 | [tls_private_key.actions-runner](https://registry.terraform.io/providers/hashicorp/tls/latest/docs/resources/private_key) | resource |
 | [aws_ami.selected](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/ami) | data source |
-| [aws_ami.ubuntu_pro](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/ami) | data source |
+| [aws_ami.ubuntu](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/ami) | data source |
 | [aws_caller_identity.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/caller_identity) | data source |
 | [aws_default_tags.provider](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/default_tags) | data source |
 | [aws_iam_policy.ssm](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy) | data source |
@@ -126,6 +126,7 @@ module "actions-runner" {
 |------|-------------|------|---------|:--------:|
 | <a name="input_allowed_drain_time"></a> [allowed\_drain\_time](#input\_allowed\_drain\_time) | How many seconds to give a running job to finish after the instance fails health checks. Maximum allowed value is 900 seconds. | `number` | `900` | no |
 | <a name="input_ami_id"></a> [ami\_id](#input\_ami\_id) | AMI id for EC2 instances. By default, latest Ubuntu var.ubuntu\_codename. | `string` | `null` | no |
+| <a name="input_architecture"></a> [architecture](#input\_architecture) | The CPU architecture for the Lambda function; valid values are `x86_64` or `arm64`. | `string` | `"x86_64"` | no |
 | <a name="input_asg_max_size"></a> [asg\_max\_size](#input\_asg\_max\_size) | Maximum number of EC2 instances in the ASG. By default, the number of subnets plus one. | `number` | `null` | no |
 | <a name="input_asg_min_size"></a> [asg\_min\_size](#input\_asg\_min\_size) | Minimal number of EC2 instances in the ASG. By default, the number of subnets. | `number` | `null` | no |
 | <a name="input_autoscaling_scaleout_evaluation_period"></a> [autoscaling\_scaleout\_evaluation\_period](#input\_autoscaling\_scaleout\_evaluation\_period) | The duration, in seconds, that the autoscaling policy will evaluate the scaling conditions before executing a scale-out action. This period helps to prevent unnecessary scaling by allowing time for metrics to stabilize after fluctuations. Default value is 60 seconds. | `number` | `60` | no |
@@ -161,7 +162,7 @@ module "actions-runner" {
 | <a name="input_sns_topic_alarm_arn"></a> [sns\_topic\_alarm\_arn](#input\_sns\_topic\_alarm\_arn) | ARN of SNS topic for Cloudwatch alarms on base EC2 instance. | `string` | `null` | no |
 | <a name="input_subnet_ids"></a> [subnet\_ids](#input\_subnet\_ids) | List of subnet ids where the actions runner instances will be created. | `list(string)` | n/a | yes |
 | <a name="input_tags"></a> [tags](#input\_tags) | A map of tags to add to resources. | `map` | `{}` | no |
-| <a name="input_ubuntu_codename"></a> [ubuntu\_codename](#input\_ubuntu\_codename) | Ubuntu version to use for the actions runner. | `string` | `"jammy"` | no |
+| <a name="input_ubuntu_codename"></a> [ubuntu\_codename](#input\_ubuntu\_codename) | Ubuntu version to use for the actions runner. | `string` | `"noble"` | no |
 | <a name="input_warm_pool_max_size"></a> [warm\_pool\_max\_size](#input\_warm\_pool\_max\_size) | Max allowed number of instances in the warm pool. By default, as many as idle runners count target plus one. | `number` | `null` | no |
 | <a name="input_warm_pool_min_size"></a> [warm\_pool\_min\_size](#input\_warm\_pool\_min\_size) | How many instances to keep in the warm pool. By default, as many as idle runners count target plus one. | `number` | `null` | no |
 

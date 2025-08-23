@@ -237,7 +237,7 @@ variable "tags" {
 variable "ubuntu_codename" {
   description = "Ubuntu version to use for the actions runner."
   type        = string
-  default     = "jammy"
+  default     = "noble"
 }
 
 variable "warm_pool_min_size" {
