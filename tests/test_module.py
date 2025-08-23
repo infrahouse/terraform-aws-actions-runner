@@ -92,7 +92,9 @@ def test_module(
             ensure_runners(
                 gha,
                 aws_region,
-                timeout_time=900 + asg_max_size * 900,  # 300 seconds to provision, 300 - warmup, 300 - cooldown old.
+                timeout_time=900
+                + asg_max_size
+                * 900,  # 300 seconds to provision, 300 - warmup, 300 - cooldown old.
                 test_role_arn=test_role_arn,
             )
         finally:
