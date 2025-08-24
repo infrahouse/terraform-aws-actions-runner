@@ -16,7 +16,7 @@ jobs:
   terraform:
     name: 'Terraform Test'
     runs-on: ["self-hosted", "Linux", "noble"]
-    timeout-minutes: 240
+    timeout-minutes: 240  # four hours
     env:
       GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
       ROLE_ARN: "arn:aws:iam::303467602807:role/actions-runner-tester"
@@ -39,7 +39,7 @@ jobs:
           role-to-assume: ${{ env.ROLE_ARN }}
           role-session-name: "terraform-ci"
           aws-region: "us-west-1"
-          role-duration-seconds: 7200
+          role-duration-seconds: 28800  # eight hours
 
       # Install the latest version of Terraform CLI
       - name: Setup Terraform
