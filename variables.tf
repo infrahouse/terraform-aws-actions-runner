@@ -88,8 +88,11 @@ variable "extra_repos" {
   type = map(
     object(
       {
-        source = string
-        key    = string
+        source   = string
+        key      = string
+        machine  = optional(string)
+        authFrom = optional(string)
+        priority = optional(number)
       }
     )
   )
