@@ -73,7 +73,7 @@ test-clean:  ## Run a test and destroy resources
 		--aws-region=${TEST_REGION} \
 		--test-role-arn=${TEST_ROLE} \
 		--github-token $(GITHUB_TOKEN) \
-		-k token-oracular \
+		-k token-noble \
 		tests/test_module.py 2>&1 | tee pytest-$(shell date +%Y%m%d-%H%M%S)-output.log
 
 #		-k token-noble \
