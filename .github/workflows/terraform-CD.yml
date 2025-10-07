@@ -34,7 +34,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ env.ROLE_ARN }}
-          role-session-name: github-actions
+          role-session-name: ${{ github.repository }}:${{ github.workflow }}:${{ github.run_id }}
           aws-region: ${{ env.AWS_DEFAULT_REGION }}
 
       - name: Set up Python
