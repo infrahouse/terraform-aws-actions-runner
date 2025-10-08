@@ -171,4 +171,5 @@ module "actions-runner" {
 | Name | Description |
 |------|-------------|
 | <a name="output_autoscaling_group_name"></a> [autoscaling\_group\_name](#output\_autoscaling\_group\_name) | Autoscaling group name. |
+| <a name="output_registration_token_secret_prefix"></a> [registration\_token\_secret\_prefix](#output\_registration\_token\_secret\_prefix) | The prefix used for storing GitHub Actions runner registration token secrets in AWS Secrets Manager |
 | <a name="output_runner_role_arn"></a> [runner\_role\_arn](#output\_runner\_role\_arn) | An actions runner EC2 instance role ARN. |
