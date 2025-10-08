@@ -4,6 +4,7 @@ import sys
 from os import path as osp
 from textwrap import dedent
 
+import boto3
 import pytest
 from infrahouse_core.github import GitHubActions, GitHubAuth
 from pytest_infrahouse import terraform_apply
@@ -26,7 +27,6 @@ from tests.conftest import (
 )
 def test_module(
     service_network,
-    secretsmanager_client,
     test_role_arn,
     keep_after,
     github_token,
@@ -34,6 +34,7 @@ def test_module(
     secret_type,
     ubuntu_codename,
     aws_region,
+    boto3_session,
 ):
     subnet_public_ids = service_network["subnet_public_ids"]["value"]
     subnet_private_ids = service_network["subnet_private_ids"]["value"]
@@ -101,5 +102,22 @@ def test_module(
             )
         finally:
             if not keep_after:
+
+                # Delete secrets with the registration token prefix
+                registration_token_secret_prefix = tf_output[
+                    "registration_token_secret_prefix"
+                ]["value"]
+                secrets_client = boto3_session.client(
+                    "secretsmanager", region_name=aws_region
+                )
+                paginator = secrets_client.get_paginator("list_secrets")
+                for page in paginator.paginate():
+                    for secret in page["SecretList"]:
+                        if secret["Name"].startswith(registration_token_secret_prefix):
+                            LOG.info(f"Deleting secret: {secret['Name']}")
+                            secrets_client.delete_secret(
+                                SecretId=secret["Name"], ForceDeleteWithoutRecovery=True
+                            )
+
                 for runner in gha.find_runners_by_label("awesome"):
                     gha.deregister_runner(runner)
