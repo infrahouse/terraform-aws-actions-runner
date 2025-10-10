@@ -14,6 +14,11 @@ variable "architecture" {
   description = "The CPU architecture for the Lambda function; valid values are `x86_64` or `arm64`."
   type        = string
   default     = "x86_64"
+
+  validation {
+    condition     = contains(["x86_64", "arm64"], var.architecture)
+    error_message = "The architecture must be either 'x86_64' or 'arm64'."
+  }
 }
 
 variable "asg_min_size" {
@@ -42,8 +47,8 @@ variable "autoscaling_scaleout_evaluation_period" {
 
 variable "cloudwatch_log_group_retention" {
   description = "Number of days you want to retain log events in the log group."
-  default     = 365
   type        = number
+  default     = 365
 }
 
 variable "environment" {
@@ -119,6 +124,7 @@ variable "github_token_secret_arn" {
 
 variable "github_app_id" {
   description = "GitHub App that gives out GitHub tokens for Terraform. Required if github_app_pem_secret_arn is not null. For instance, https://github.com/organizations/infrahouse/settings/apps/infrahouse-github-terraform"
+  type        = number
   default     = null
 }
 
@@ -134,7 +140,7 @@ variable "github_org_name" {
 }
 
 variable "keypair_name" {
-  description = "SSH key pair name that will be added to the postfix instance.By default, create and use a new SSH keypair."
+  description = "SSH key pair name that will be added to the actions runner instance. By default, create and use a new SSH keypair."
   type        = string
   default     = null
 }
@@ -143,6 +149,11 @@ variable "max_instance_lifetime_days" {
   description = "The maximum amount of time, in _days_, that an instance can be in service, values must be either equal to 0 or between 7 and 365 days."
   type        = number
   default     = 30
+
+  validation {
+    condition     = var.max_instance_lifetime_days == 0 || (var.max_instance_lifetime_days >= 7 && var.max_instance_lifetime_days <= 365)
+    error_message = "The max_instance_lifetime_days must be either 0 or between 7 and 365 days."
+  }
 }
 
 variable "on_demand_base_capacity" {
@@ -200,7 +211,8 @@ variable "puppet_root_directory" {
 }
 
 variable "python_version" {
-  description = "Python version to run lambda on. Must one of https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html"
+  description = "Python version to run lambda on. Must be one of https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html"
+  type        = string
   default     = "python3.12"
 }
 
@@ -235,6 +247,7 @@ variable "lambda_subnet_ids" {
 
 variable "tags" {
   description = "A map of tags to add to resources."
+  type        = map(string)
   default     = {}
 }
 variable "ubuntu_codename" {
