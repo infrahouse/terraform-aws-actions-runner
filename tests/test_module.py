@@ -1,7 +1,8 @@
 import json
 import platform
 import sys
-from os import path as osp
+from os import path as osp, remove
+from shutil import rmtree
 from textwrap import dedent
 
 import boto3
@@ -20,6 +21,9 @@ from tests.conftest import (
 
 
 @pytest.mark.parametrize(
+    "aws_provider_version", ["~> 5.62", "~> 6.0"], ids=["aws-5", "aws-6"]
+)
+@pytest.mark.parametrize(
     "secret_type, ubuntu_codename",
     [
         ("token", "noble"),
@@ -35,6 +39,7 @@ def test_module(
     ubuntu_codename,
     aws_region,
     boto3_session,
+    aws_provider_version,
 ):
     subnet_public_ids = service_network["subnet_public_ids"]["value"]
     subnet_private_ids = service_network["subnet_private_ids"]["value"]
@@ -47,6 +52,40 @@ def test_module(
         ), "Set a secret ARN containing GitHub APP PEM key token value with --github-app-pem-secret CLI argument."
 
     terraform_module_dir = osp.join(TERRAFORM_ROOT_DIR, "actions-runner")
+
+    # Clean up state files to ensure fresh terraform init
+    state_files = [
+        osp.join(terraform_module_dir, ".terraform"),
+        osp.join(terraform_module_dir, ".terraform.lock.hcl"),
+    ]
+    for state_file in state_files:
+        try:
+            if osp.isdir(state_file):
+                rmtree(state_file)
+            elif osp.isfile(state_file):
+                remove(state_file)
+        except FileNotFoundError:
+            pass
+
+    # Generate terraform.tf with specified AWS provider version
+    with open(osp.join(terraform_module_dir, "terraform.tf"), "w") as fp:
+        fp.write(
+            dedent(
+                f"""
+                terraform {{
+                  required_version = "~> 1.5"
+                  //noinspection HILUnresolvedReference
+                  required_providers {{
+                    aws = {{
+                      source = "hashicorp/aws"
+                      version = "{aws_provider_version}"
+                    }}
+                  }}
+                }}
+                """
+            )
+        )
+
     with open(osp.join(terraform_module_dir, "terraform.tfvars"), "w") as fp:
         asg_max_size = 2
         fp.write(

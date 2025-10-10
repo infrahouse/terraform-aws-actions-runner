@@ -13,6 +13,7 @@ export PRINT_HELP_PYSCRIPT
 
 TEST_REGION="us-west-2"
 TEST_ROLE="arn:aws:iam::303467602807:role/actions-runner-tester"
+TEST_SELECTOR="token-noble-aws-6"
 
 help: install-hooks
 	@python -c "$$PRINT_HELP_PYSCRIPT" < Makefile
@@ -62,7 +63,7 @@ test-keep:  ## Run a test and keep resources
 	pytest -xvvs \
 		--aws-region=${TEST_REGION} \
 		--test-role-arn=${TEST_ROLE} \
-		-k token-noble \
+		-k $(TEST_SELECTOR) \
 		--github-token $(GITHUB_TOKEN) \
 		--keep-after \
 		tests/test_module.py 2>&1 | tee pytest-$(shell date +%Y%m%d-%H%M%S)-output.log
@@ -73,7 +74,7 @@ test-clean:  ## Run a test and destroy resources
 		--aws-region=${TEST_REGION} \
 		--test-role-arn=${TEST_ROLE} \
 		--github-token $(GITHUB_TOKEN) \
-		-k token-noble \
+		-k $(TEST_SELECTOR) \
 		tests/test_module.py 2>&1 | tee pytest-$(shell date +%Y%m%d-%H%M%S)-output.log
 
 #		-k token-noble \
