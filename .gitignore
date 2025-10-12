@@ -7,3 +7,4 @@ __pycache__
 terraform.tfvars
 .terraform.tfstate.lock.info
 pytest-*-output.log
+/test_data/actions-runner/

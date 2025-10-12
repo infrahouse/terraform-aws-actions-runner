@@ -1,2 +1,2 @@
-pytest-infrahouse ~= 0.10, >= 0.10.1
+pytest-infrahouse ~= 0.18, >= 0.17.2
 infrahouse-core ~= 0.17, >= 0.17.2
