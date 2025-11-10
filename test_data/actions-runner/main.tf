@@ -26,4 +26,7 @@ module "actions-runner" {
   ubuntu_codename = var.ubuntu_codename
   architecture    = var.architecture
   python_version  = var.python_version
+  alarm_emails = [
+    "aleks+terraform-aws-actions-runner@infrahouse.com"
+  ]
 }

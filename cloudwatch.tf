@@ -18,7 +18,6 @@ resource "aws_cloudwatch_metric_alarm" "cpu_utilization_alarm" {
 module "record_metric" {
   source                         = "./modules/record_metric"
   asg_name                       = aws_autoscaling_group.actions-runner.name
-  asg_arn                        = aws_autoscaling_group.actions-runner.arn
   cloudwatch_log_group_retention = var.cloudwatch_log_group_retention
   architecture                   = var.architecture
   python_version                 = var.python_version
@@ -30,7 +29,9 @@ module "record_metric" {
   }
   github_app_id = var.github_app_id
 
-  lambda_bucket_name = aws_s3_bucket.lambda_tmp.bucket
-  tags               = local.default_module_tags
-  installation_id    = random_uuid.installation-id.result
+  alarm_emails         = var.alarm_emails
+  error_rate_threshold = var.error_rate_threshold
+
+  tags            = local.default_module_tags
+  installation_id = random_uuid.installation-id.result
 }

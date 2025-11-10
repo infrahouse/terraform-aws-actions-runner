@@ -19,6 +19,13 @@ Self-hosted runners offer several advantages over GitHub-hosted runners:
 
 ## What's New
 
+- **Migrated record_metric lambda to terraform-aws-lambda-monitored module:**
+    - Automated dependency packaging for Lambda functions (no more custom package.sh scripts)
+    - Built-in error monitoring and alerting via SNS for Lambda functions
+    - Standardized CloudWatch integration with configurable error rate thresholds
+    - **Breaking:** Removed `lambda_bucket_name` variable - the module now creates its own S3 bucket for Lambda packages
+    - **New Required:** `alarm_emails` variable - list of email addresses for Lambda error notifications (required for ISO 27001 compliance)
+    - **New Optional:** `error_rate_threshold` variable - error rate percentage threshold for alerting (default: 10.0)
 - **AWS Provider 5 and 6 Support:** The module now supports both AWS provider version 5 and 6, ensuring compatibility across major versions.
 - **Enhanced Input Validation:** Added validation blocks for `architecture`, `max_instance_lifetime_days`, and other critical variables to catch configuration errors early.
 - **Improved Type Safety:** All variables now have explicit type declarations for better consistency and error prevention.
@@ -67,6 +74,10 @@ module "actions-runner" {
 
 > It's not a bad idea to check `test_data/actions-runner/main.tf` and other files in the directory. 
 > They're a part of Terraform unit test and are supposed to work.
+
+---
+
+<!-- BEGIN_TF_DOCS -->
 
 ## Requirements
 
@@ -137,6 +148,7 @@ module "actions-runner" {
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
+| <a name="input_alarm_emails"></a> [alarm\_emails](#input\_alarm\_emails) | List of email addresses to receive alarm notifications for Lambda function errors. At least one email is required for ISO 27001 compliance. | `list(string)` | n/a | yes |
 | <a name="input_allowed_drain_time"></a> [allowed\_drain\_time](#input\_allowed\_drain\_time) | How many seconds to give a running job to finish after the instance fails health checks. Maximum allowed value is 900 seconds. | `number` | `900` | no |
 | <a name="input_ami_id"></a> [ami\_id](#input\_ami\_id) | AMI id for EC2 instances. By default, latest Ubuntu var.ubuntu\_codename. | `string` | `null` | no |
 | <a name="input_architecture"></a> [architecture](#input\_architecture) | The CPU architecture for the Lambda function; valid values are `x86_64` or `arm64`. | `string` | `"x86_64"` | no |
@@ -146,6 +158,7 @@ module "actions-runner" {
 | <a name="input_autoscaling_step"></a> [autoscaling\_step](#input\_autoscaling\_step) | How many instances to add or remove when the autoscaling policy is triggered. | `number` | `1` | no |
 | <a name="input_cloudwatch_log_group_retention"></a> [cloudwatch\_log\_group\_retention](#input\_cloudwatch\_log\_group\_retention) | Number of days you want to retain log events in the log group. | `number` | `365` | no |
 | <a name="input_environment"></a> [environment](#input\_environment) | Environment name. Passed on as a puppet fact. | `string` | n/a | yes |
+| <a name="input_error_rate_threshold"></a> [error\_rate\_threshold](#input\_error\_rate\_threshold) | Error rate threshold percentage for Lambda error alerting. Alerts trigger when error rate exceeds this percentage. | `number` | `10` | no |
 | <a name="input_extra_files"></a> [extra\_files](#input\_extra\_files) | Additional files to create on an instance. | <pre>list(<br/>    object(<br/>      {<br/>        content     = string<br/>        path        = string<br/>        permissions = string<br/>      }<br/>    )<br/>  )</pre> | `[]` | no |
 | <a name="input_extra_instance_profile_permissions"></a> [extra\_instance\_profile\_permissions](#input\_extra\_instance\_profile\_permissions) | A JSON with a permissions policy document. The policy will be attached to the ASG instance profile. | `string` | `null` | no |
 | <a name="input_extra_labels"></a> [extra\_labels](#input\_extra\_labels) | A list of strings to be added as actions runner labels. | `list(string)` | `[]` | no |
@@ -186,3 +199,4 @@ module "actions-runner" {
 | <a name="output_autoscaling_group_name"></a> [autoscaling\_group\_name](#output\_autoscaling\_group\_name) | Autoscaling group name. |
 | <a name="output_registration_token_secret_prefix"></a> [registration\_token\_secret\_prefix](#output\_registration\_token\_secret\_prefix) | The prefix used for storing GitHub Actions runner registration token secrets in AWS Secrets Manager |
 | <a name="output_runner_role_arn"></a> [runner\_role\_arn](#output\_runner\_role\_arn) | An actions runner EC2 instance role ARN. |
+<!-- END_TF_DOCS -->

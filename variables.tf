@@ -51,6 +51,25 @@ variable "cloudwatch_log_group_retention" {
   default     = 365
 }
 
+variable "alarm_emails" {
+  description = "List of email addresses to receive alarm notifications for Lambda function errors. At least one email is required for ISO 27001 compliance."
+  type        = list(string)
+  validation {
+    condition     = length(var.alarm_emails) > 0
+    error_message = "At least one alarm email address must be provided for monitoring compliance"
+  }
+}
+
+variable "error_rate_threshold" {
+  description = "Error rate threshold percentage for Lambda error alerting. Alerts trigger when error rate exceeds this percentage."
+  type        = number
+  default     = 10.0
+  validation {
+    condition     = var.error_rate_threshold > 0 && var.error_rate_threshold <= 100
+    error_message = "error_rate_threshold must be between 0 and 100"
+  }
+}
+
 variable "environment" {
   description = "Environment name. Passed on as a puppet fact."
   type        = string
