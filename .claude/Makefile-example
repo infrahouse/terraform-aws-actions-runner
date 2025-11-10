@@ -12,8 +12,8 @@ endef
 export PRINT_HELP_PYSCRIPT
 
 TEST_REGION="us-west-2"
-TEST_ROLE="arn:aws:iam::303467602807:role/actions-runner-tester"
-TEST_SELECTOR="token-noble-aws-6"
+TEST_ROLE="arn:aws:iam::303467602807:role/openvpn-tester"
+TEST_SELECTOR="aws6"
 
 help: install-hooks
 	@python -c "$$PRINT_HELP_PYSCRIPT" < Makefile
@@ -28,35 +28,7 @@ install-hooks:  ## Install repo hooks
 
 .PHONY: test
 test:  ## Run tests on the module
-		pytest -xvvs \
-			--test-role-arn=${TEST_ROLE} \
-			--github-token $(CI_TEST_TOKEN) \
-			tests/test_module.py
-
-
-.PHONY: bootstrap
-bootstrap: install-hooks ## bootstrap the development environment
-	pip install -U "pip ~= 25.2"
-	pip install -U "setuptools ~= 80.9"
-	pip install -r requirements.txt
-
-.PHONY: clean
-clean: ## clean the repo from cruft
-	rm -rf .pytest_cache
-	find . -name '.terraform' -exec rm -fr {} +
-	find . -name '.terraform.lock.hcl' -exec rm {} +
-
-.PHONY: fmt
-fmt: format
-
-.PHONY: format
-format:  ## Use terraform fmt to format all files in the repo
-	@echo "Formatting terraform files"
-	terraform fmt -recursive
-	black tests \
-		modules/runner_registration/lambda/main.py \
-		modules/runner_deregistration/lambda/main.py \
-		modules/record_metric/lambda/main.py
+	pytest -xvvs tests/
 
 .PHONY: test-keep
 test-keep:  ## Run a test and keep resources
@@ -64,7 +36,6 @@ test-keep:  ## Run a test and keep resources
 		--aws-region=${TEST_REGION} \
 		--test-role-arn=${TEST_ROLE} \
 		-k $(TEST_SELECTOR) \
-		--github-token $(GITHUB_TOKEN) \
 		--keep-after \
 		tests/test_module.py 2>&1 | tee pytest-$(shell date +%Y%m%d-%H%M%S)-output.log
 
@@ -73,11 +44,34 @@ test-clean:  ## Run a test and destroy resources
 	pytest -xvvs \
 		--aws-region=${TEST_REGION} \
 		--test-role-arn=${TEST_ROLE} \
-		--github-token $(GITHUB_TOKEN) \
 		-k $(TEST_SELECTOR) \
 		tests/test_module.py 2>&1 | tee pytest-$(shell date +%Y%m%d-%H%M%S)-output.log
 
-#		-k token-noble \
+.PHONY: lint
+lint:  ## Check code style
+	yamllint \
+		.github/workflows
+	terraform fmt -check -recursive
+
+.PHONY: bootstrap
+bootstrap: ## bootstrap the development environment
+	pip install -U "pip ~= 25.2"
+	pip install -U "setuptools ~= 80.9"
+	pip install -r requirements.txt
+
+.PHONY: clean
+clean: ## clean the repo from cruft
+	rm -rf .pytest_cache
+	find . -name '.terraform' -exec rm -fr {} +
+
+.PHONY: fmt
+fmt: format
+
+.PHONY: format
+format:  ## Use terraform fmt to format all files in the repo
+	@echo "Formatting terraform files"
+	terraform fmt -recursive
+	black tests portal
 
 define BROWSER_PYSCRIPT
 import os, webbrowser, sys
@@ -92,10 +86,6 @@ BROWSER := python -c "$$BROWSER_PYSCRIPT"
 
 .PHONY: docs
 docs: ## generate Sphinx HTML documentation, including API docs
-	terraform-docs .
-
-.PHONY: lint
-lint:  ## Lint the module
-	@echo "Check code style"
-	black --check tests
-	terraform fmt -check
+	$(MAKE) -C docs clean
+	$(MAKE) -C docs html
+	$(BROWSER) docs/_build/html/index.html

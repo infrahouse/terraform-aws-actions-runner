@@ -1,3 +1,3 @@
 output "lambda_name" {
-  value = aws_lambda_function.lambda.function_name
+  value = module.lambda_monitored.lambda_function_name
 }

@@ -7,7 +7,7 @@ locals {
 
 resource "aws_cloudwatch_event_rule" "run_every" {
   name_prefix         = substr("${var.asg_name}-${local.factor}-${local.period}", 0, 38)
-  description         = "Trigger Lambda ${aws_lambda_function.lambda.function_name} every ${local.period}"
+  description         = "Trigger Lambda ${module.lambda_monitored.lambda_function_name} every ${local.period}"
   schedule_expression = "rate(1 ${local.period})"
   tags = merge(
     var.tags,
@@ -21,14 +21,14 @@ resource "aws_cloudwatch_event_rule" "run_every" {
 resource "aws_cloudwatch_event_target" "lambda_target" {
   rule      = aws_cloudwatch_event_rule.run_every.name
   target_id = "send-to-lambda"
-  arn       = aws_lambda_function.lambda.arn
+  arn       = module.lambda_monitored.lambda_function_arn
 }
 
 # Grant EventBridge permission to invoke the Lambda
 resource "aws_lambda_permission" "allow_eventbridge" {
   statement_id  = "AllowExecutionFromEventBridge"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.lambda.function_name
+  function_name = module.lambda_monitored.lambda_function_name
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.run_every.arn
 }
