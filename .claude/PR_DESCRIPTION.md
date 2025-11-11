@@ -20,7 +20,7 @@ The `modules/record_metric` module previously managed Lambda packaging manually 
 - Manual archiving and upload logic
 
 ### Now Uses Standardized Module
-The module now leverages `terraform-aws-lambda-monitored` v0.3.4 which provides:
+The module now leverages `terraform-aws-lambda-monitored` v1.0.0 which provides:
 - ✅ Automated Python dependency packaging (no more custom scripts)
 - ✅ Built-in error monitoring and alerting via SNS
 - ✅ Standardized CloudWatch integration with configurable error thresholds
@@ -164,7 +164,7 @@ module "actions-runner" {
 
 ## Related
 
-- Module: [terraform-aws-lambda-monitored](https://registry.terraform.io/modules/infrahouse/lambda-monitored/aws/0.3.4)
+- Module: [terraform-aws-lambda-monitored](https://registry.terraform.io/modules/infrahouse/lambda-monitored/aws/1.0.0)
 - Architecture docs: [.claude/architecture-notes.md](./.claude/architecture-notes.md)
 
 ## Checklist
