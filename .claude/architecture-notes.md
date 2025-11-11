@@ -14,7 +14,7 @@
    - archive_file tries to read missing directory → FAILS ❌
 ```
 
-### The Solution (Implemented in terraform-aws-lambda-monitored v0.3.4)
+### The Solution (Implemented in terraform-aws-lambda-monitored v1.0.0)
 
 #### Key Insight #1: Build In-Place
 ```hcl
@@ -133,6 +133,6 @@ This stores the zip in `path.module` which gets deleted during module updates.
 ### References
 
 - Module: `registry.infrahouse.com/infrahouse/lambda-monitored/aws`
-- Version: 0.3.4
+- Version: 1.0.0
 - File: `lambda_code.tf`
 - Issue discovered: 2025-11-09 (`.build` directory deletion after terraform get -update)

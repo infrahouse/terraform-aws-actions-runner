@@ -54,8 +54,7 @@ resource "aws_iam_policy" "record_metric_permissions" {
 # Lambda function with monitoring using terraform-aws-lambda-monitored module
 module "lambda_monitored" {
   source  = "registry.infrahouse.com/infrahouse/lambda-monitored/aws"
-  version = "0.3.5"
-  # source = "../../../terraform-aws-lambda-monitored"
+  version = "1.0.0"
 
   function_name                 = "${var.asg_name}_record_metric"
   lambda_source_dir             = "${path.module}/lambda"

@@ -19,7 +19,7 @@ Self-hosted runners offer several advantages over GitHub-hosted runners:
 
 ## What's New
 
-- **Migrated record_metric lambda to terraform-aws-lambda-monitored module:**
+- **Migrated record_metric lambda to terraform-aws-lambda-monitored module (v1.0.0):**
     - Automated dependency packaging for Lambda functions (no more custom package.sh scripts)
     - Built-in error monitoring and alerting via SNS for Lambda functions
     - Standardized CloudWatch integration with configurable error rate thresholds
