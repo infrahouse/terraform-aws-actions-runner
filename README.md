@@ -48,7 +48,7 @@ Either `github_token_secret_arn` or `github_app_pem_secret_arn` is required.
 ```hcl
 module "actions-runner" {
   source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
-  version = "3.0.2"
+  version = "3.0.3"
 
   asg_min_size             = 1
   asg_max_size             = 1
