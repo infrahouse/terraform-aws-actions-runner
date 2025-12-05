@@ -131,9 +131,13 @@ def test_module(
         LOG.info("%s", json.dumps(tf_output, indent=4))
         gha = GitHubActions(GitHubAuth(github_token, GITHUB_ORG_NAME))
         try:
+            autoscaling_client = boto3_session.client(
+                "autoscaling", region_name=aws_region
+            )
             ensure_runners(
                 gha,
                 aws_region,
+                autoscaling_client,
                 timeout_time=900
                 + asg_max_size
                 * 900,  # 300 seconds to provision, 300 - warmup, 300 - cooldown old.

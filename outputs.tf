@@ -12,3 +12,8 @@ output "registration_token_secret_prefix" {
   description = "The prefix used for storing GitHub Actions runner registration token secrets in AWS Secrets Manager"
   value       = local.registration_token_secret_prefix
 }
+
+output "deregistration_log_group" {
+  description = "CloudWatch log group name for the deregistration lambda"
+  value       = module.deregistration.log_group_name
+}

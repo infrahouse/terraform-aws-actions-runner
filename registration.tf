@@ -31,7 +31,6 @@ module "deregistration" {
   }
   github_app_id                    = var.github_app_id
   registration_token_secret_prefix = local.registration_token_secret_prefix
-  lambda_bucket_name               = aws_s3_bucket.lambda_tmp.bucket
   lambda_timeout                   = var.allowed_drain_time
   tags                             = local.default_module_tags
   python_version                   = var.python_version
@@ -39,6 +38,8 @@ module "deregistration" {
   security_group_ids = [
     aws_security_group.actions-runner.id
   ]
-  subnet_ids      = var.lambda_subnet_ids != null ? var.lambda_subnet_ids : var.subnet_ids
-  installation_id = random_uuid.installation-id.result
+  subnet_ids           = var.lambda_subnet_ids != null ? var.lambda_subnet_ids : var.subnet_ids
+  installation_id      = random_uuid.installation-id.result
+  alarm_emails         = var.alarm_emails
+  error_rate_threshold = var.error_rate_threshold
 }

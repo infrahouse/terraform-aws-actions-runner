@@ -171,7 +171,7 @@ module "actions-runner" {
 | <a name="input_idle_runners_target_count"></a> [idle\_runners\_target\_count](#input\_idle\_runners\_target\_count) | How many idle runners to aim for in the autoscaling policy. | `number` | `1` | no |
 | <a name="input_instance_type"></a> [instance\_type](#input\_instance\_type) | EC2 Instance type | `string` | `"t3a.micro"` | no |
 | <a name="input_keypair_name"></a> [keypair\_name](#input\_keypair\_name) | SSH key pair name that will be added to the actions runner instance. By default, create and use a new SSH keypair. | `string` | `null` | no |
-| <a name="input_lambda_subnet_ids"></a> [lambda\_subnet\_ids](#input\_lambda\_subnet\_ids) | List of subnet ids where the lambda function will run. The subnets must have NAT. | `list(string)` | `null` | no |
+| <a name="input_lambda_subnet_ids"></a> [lambda\_subnet\_ids](#input\_lambda\_subnet\_ids) | List of subnet IDs where the Lambda functions (runner\_registration, runner\_deregistration, record\_metric) will run.<br/><br/>REQUIREMENTS: The subnets MUST have either:<br/>- NAT Gateway/Instance for internet access to AWS services, OR<br/>- VPC Endpoints for: SSM, Secrets Manager, EC2, AutoScaling, CloudWatch<br/><br/>The Lambda functions need VPC networking to:<br/>- Send SSM commands to EC2 instances (start/stop actions-runner service)<br/>- Access Secrets Manager (GitHub credentials, registration tokens)<br/>- Call EC2/AutoScaling APIs (describe instances, complete lifecycle actions)<br/>- Publish CloudWatch metrics<br/><br/>If not specified, defaults to var.subnet\_ids (runner instance subnets).<br/><br/>WARNING: Lambda functions will fail if subnets lack internet/AWS service access. | `list(string)` | `null` | no |
 | <a name="input_max_instance_lifetime_days"></a> [max\_instance\_lifetime\_days](#input\_max\_instance\_lifetime\_days) | The maximum amount of time, in \_days\_, that an instance can be in service, values must be either equal to 0 or between 7 and 365 days. | `number` | `30` | no |
 | <a name="input_on_demand_base_capacity"></a> [on\_demand\_base\_capacity](#input\_on\_demand\_base\_capacity) | If specified, the ASG will request spot instances and this will be the minimal number of on-demand instances. Also, warm pool will be disabled. | `number` | `null` | no |
 | <a name="input_packages"></a> [packages](#input\_packages) | List of packages to install when the instances bootstraps. | `list(string)` | `[]` | no |
@@ -197,6 +197,7 @@ module "actions-runner" {
 | Name | Description |
 |------|-------------|
 | <a name="output_autoscaling_group_name"></a> [autoscaling\_group\_name](#output\_autoscaling\_group\_name) | Autoscaling group name. |
+| <a name="output_deregistration_log_group"></a> [deregistration\_log\_group](#output\_deregistration\_log\_group) | CloudWatch log group name for the deregistration lambda |
 | <a name="output_registration_token_secret_prefix"></a> [registration\_token\_secret\_prefix](#output\_registration\_token\_secret\_prefix) | The prefix used for storing GitHub Actions runner registration token secrets in AWS Secrets Manager |
 | <a name="output_runner_role_arn"></a> [runner\_role\_arn](#output\_runner\_role\_arn) | An actions runner EC2 instance role ARN. |
 <!-- END_TF_DOCS -->

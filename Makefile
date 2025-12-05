@@ -77,6 +77,25 @@ test-clean:  ## Run a test and destroy resources
 		-k $(TEST_SELECTOR) \
 		tests/test_module.py 2>&1 | tee pytest-$(shell date +%Y%m%d-%H%M%S)-output.log
 
+.PHONY: test-migration-keep
+test-migration-keep:  ## Run migration test and keep resources
+	pytest -xvvs \
+		--aws-region=${TEST_REGION} \
+		--test-role-arn=${TEST_ROLE} \
+		-k "token-noble-aws-5" \
+		--github-token $(GITHUB_TOKEN) \
+		--keep-after \
+		tests/test_module_migration.py 2>&1 | tee pytest-$(shell date +%Y%m%d-%H%M%S)-output.log
+
+.PHONY: test-migration-clean
+test-migration-clean:  ## Run migration test and destroy resources
+	pytest -xvvs \
+		--aws-region=${TEST_REGION} \
+		--test-role-arn=${TEST_ROLE} \
+		--github-token $(GITHUB_TOKEN) \
+		-k "token-noble-aws-5" \
+		tests/test_module_migration.py 2>&1 | tee pytest-$(shell date +%Y%m%d-%H%M%S)-output.log
+
 #		-k token-noble \
 
 define BROWSER_PYSCRIPT

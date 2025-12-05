@@ -8,14 +8,15 @@ from github import GithubIntegration
 from github.Consts import MAX_JWT_EXPIRY
 from infrahouse_core.aws.asg import ASG
 from infrahouse_core.aws.asg_instance import ASGInstance
-from infrahouse_core.github import GitHubActions, GitHubAuth
+from infrahouse_core.github import GitHubActions
 from infrahouse_core.logging import setup_logging
 from infrahouse_core.timeout import timeout
 from pytest_infrahouse.plugin import aws_region
+from pytest_infrahouse.utils import wait_for_instance_refresh
 from requests import get
 
 
-LOG = logging.getLogger()
+LOG = logging.getLogger(__name__)
 GITHUB_ORG_NAME = "infrahouse"
 TERRAFORM_ROOT_DIR = "test_data"
 GH_APP_ID = 1016363
@@ -48,7 +49,11 @@ def github_app_pem_secret_arn(request):
 
 
 def ensure_runners(
-    gha: GitHubActions, aws_region, timeout_time=900, test_role_arn=None
+    gha: GitHubActions,
+    aws_region,
+    autoscaling_client,
+    timeout_time=900,
+    test_role_arn=None,
 ):
     try:
         with timeout(timeout_time):
@@ -71,7 +76,11 @@ def ensure_runners(
                     asg = ASG(
                         asg_instance.asg_name, role_arn=test_role_arn, region=aws_region
                     )
-                    wait_for_instance_refreshes(asg, refresh_wait_timeout=timeout_time)
+                    wait_for_instance_refresh(
+                        asg_instance.asg_name,
+                        autoscaling_client,
+                        timeout=timeout_time,
+                    )
 
                     for instance in asg.instances:
                         LOG.info("Checking instance %s", instance.instance_id)
@@ -87,31 +96,6 @@ def ensure_runners(
     except TimeoutError:
         LOG.error("No registered runners after %d seconds.", timeout_time)
         assert False
-
-
-def wait_for_instance_refreshes(asg: ASG, refresh_wait_timeout=300):
-    complete = {
-        "Successful",
-        "Failed",
-        "Cancelled",
-        "RollbackFailed",
-        "RollbackSuccessful",
-    }
-    with timeout(refresh_wait_timeout):
-        while True:
-            refreshes = list(asg.instance_refreshes)  # snapshot current statuses
-            if not refreshes:
-                LOG.info("No instance refreshes found.")
-                return
-
-            # We are done only if *all* refreshes are in a complete state
-            all_done = all(ir.get("Status") in complete for ir in refreshes)
-
-            if all_done:
-                return
-
-            LOG.info("Waiting for instance refreshes to complete...")
-            sleep(5)
 
 
 def get_secret(secretsmanager_client, secret_name):
