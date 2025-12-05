@@ -332,24 +332,24 @@ Scheduled Sweep (30 min)       → Safety net (catches failures within 30 min)
 
 ## Documentation Updates
 
-- [ ] Update README.md with:
-  - New required variable: `alarm_emails`
-  - New optional variable: `error_rate_threshold`
-  - Breaking change: removed `lambda_bucket_name`
-  - Migration guide
-- [ ] Update examples if any exist
-- [ ] Update CHANGELOG or create migration notes
+- [x] Update README.md with:
+  - Migration guide for v3.1.0+ upgrade
+  - What's New section updated with runner_deregistration migration
+  - No breaking changes (minor version bump)
+  - Emphasizes seamless migration with moved blocks
+- [x] Update examples if any exist (none found - test_data used instead)
+- [x] Update CHANGELOG - handled by git-cliff automatically
 
 ## Success Criteria
 
-- [ ] All Terraform code validates and formats correctly
-- [ ] Tests pass successfully
-- [ ] Lambda function deploys and runs correctly
-- [ ] Both EventBridge triggers work as expected
-- [ ] VPC connectivity maintained
-- [ ] Error monitoring and alerting operational
-- [ ] Documentation updated
-- [ ] No regression in functionality
+- [x] All Terraform code validates and formats correctly
+- [x] Tests pass successfully (make test-keep and make test-keep-migration)
+- [x] Lambda function deploys and runs correctly
+- [x] Both EventBridge triggers work as expected
+- [x] VPC connectivity maintained
+- [x] Error monitoring and alerting operational
+- [x] Documentation updated (README.md with migration guide)
+- [x] No regression in functionality
 
 ## Timeline Estimate
 

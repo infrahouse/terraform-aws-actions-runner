@@ -19,6 +19,12 @@ Self-hosted runners offer several advantages over GitHub-hosted runners:
 
 ## What's New
 
+- **Migrated runner_deregistration lambda to terraform-aws-lambda-monitored module (v1.0.4):**
+    - Automated dependency packaging for Lambda functions (no more custom package.sh scripts)
+    - Built-in error monitoring and alerting via SNS
+    - Standardized CloudWatch integration with configurable error rate thresholds
+    - Scheduled sweep interval changed from 5 to 30 minutes for improved efficiency
+    - **Migration is seamless** - existing log groups and data are preserved via `moved` blocks
 - **Migrated record_metric lambda to terraform-aws-lambda-monitored module (v1.0.0):**
     - Automated dependency packaging for Lambda functions (no more custom package.sh scripts)
     - Built-in error monitoring and alerting via SNS for Lambda functions
@@ -35,6 +41,48 @@ Self-hosted runners offer several advantages over GitHub-hosted runners:
     - Improved instance lifecycle management.
     - Prevent action runner jobs from being scheduled on instances going back to the warm pool.
     - Orphaned runners are now automatically deregistered.
+
+## Migration Guide
+
+### Upgrading to v3.1.0+ (runner_deregistration Migration)
+
+The v3.1.0 release migrates the `runner_deregistration` lambda to use `terraform-aws-lambda-monitored` for improved monitoring. 
+**This is a seamless upgrade with no breaking changes and no data loss.**
+
+#### What Changed
+
+- Internal implementation now uses `terraform-aws-lambda-monitored` module
+- Scheduled sweep interval optimized from 5 minutes to 30 minutes
+- New SNS alerts for Lambda errors (using existing `alarm_emails` variable)
+- **No configuration changes required** - all variables remain the same
+
+#### Migration Steps
+
+Simply update your module version and apply:
+
+```hcl
+module "actions-runner" {
+  source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
+  version = "~> 3.1"  # Update from 3.0.x
+
+  # All existing configuration remains unchanged
+}
+```
+
+Then run:
+
+```bash
+terraform plan  # Shows resource moves via "moved" blocks
+terraform apply # Applies seamlessly
+```
+
+**What to expect:**
+- Terraform shows resources moving to new paths (not destroy/create)
+- CloudWatch logs and data are fully preserved
+- Zero downtime - runners continue operating normally
+- New monitoring capabilities added automatically
+
+**Verification:** After upgrade, check CloudWatch Logs - your deregistration logs will still be there with full history intact.
 
 ## Usage
 
