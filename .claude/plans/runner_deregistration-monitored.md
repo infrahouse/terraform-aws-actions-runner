@@ -102,7 +102,7 @@ module "lambda_monitored" {
 ## Migration Steps
 
 ### 1. Update variables.tf
-- [ ] **Add** new required variables:
+- [x] **Add** new required variables:
   ```hcl
   variable "alarm_emails" {
     description = "List of email addresses to receive alarm notifications for Lambda errors. At least one email is required for ISO 27001 compliance."
@@ -124,43 +124,46 @@ module "lambda_monitored" {
   }
   ```
 
-- [ ] **Remove** variables (breaking changes):
+- [x] **Remove** variables (breaking changes):
   - `lambda_bucket_name` - module creates its own S3 bucket
-  - `security_group_ids` - will be passed to module directly
-  - `subnet_ids` - will be passed to module directly
+  - Note: `security_group_ids` and `subnet_ids` are KEPT (still needed for module interface)
 
 ### 2. Create main.tf with lambda-monitored module
-- [ ] Create custom IAM policy document for runner_deregistration permissions
-- [ ] Create IAM policy resource
-- [ ] Add lambda-monitored module call with all configurations
-- [ ] Ensure VPC config is passed to module (subnet_ids, security_group_ids)
+- [x] Create custom IAM policy document for runner_deregistration permissions
+- [x] Create IAM policy resource
+- [x] Add lambda-monitored module call with all configurations
+- [x] Ensure VPC config is passed to module (subnet_ids, security_group_ids)
 
 ### 3. Update eventbridge.tf
-- [ ] Update Lambda function references from `aws_lambda_function.lambda` to `module.lambda_monitored.lambda_function`
-- [ ] Update Lambda ARN references to `module.lambda_monitored.lambda_arn`
-- [ ] Keep both EventBridge rules (scheduled and lifecycle hook)
-- [ ] Update Lambda permission resources to reference the new module
+- [x] Update Lambda function references from `aws_lambda_function.lambda` to `module.lambda_monitored.lambda_function`
+- [x] Update Lambda ARN references to `module.lambda_monitored.lambda_arn`
+- [x] Keep both EventBridge rules (scheduled and lifecycle hook)
+- [x] Update Lambda permission resources to reference the new module
+- [x] Change scheduled interval from 5 to 30 minutes
+- [x] Move lifecycle hook EventBridge rule from cloudwatch.tf to eventbridge.tf
 
 ### 4. Update outputs.tf
-- [ ] Change output from `aws_lambda_function.lambda.function_name` to `module.lambda_monitored.lambda_name`
+- [x] Change output from `aws_lambda_function.lambda.function_name` to `module.lambda_monitored.lambda_name`
 
 ### 5. Delete obsolete files
-- [ ] Delete `lambda.tf` - replaced by lambda-monitored module
-- [ ] Delete `lambda_code.tf` - packaging handled by module
-- [ ] Delete `cloudwatch.tf` - CloudWatch resources handled by module (except EventBridge rules moved to eventbridge.tf)
-- [ ] Delete `locals.tf` - no longer needed
-- [ ] Delete `package.sh` - packaging handled by module
+- [x] Delete `lambda.tf` - replaced by lambda-monitored module
+- [x] Delete `lambda_code.tf` - packaging handled by module
+- [x] Delete `cloudwatch.tf` - CloudWatch resources handled by module (except EventBridge rules moved to eventbridge.tf)
+- [x] Delete `locals.tf` - no longer needed
+- [x] Delete `package.sh` - packaging handled by module
 
 ### 6. Update parent module registration.tf
-- [ ] Update module "deregistration" call in registration.tf:23-44
-- [ ] Add `alarm_emails = var.alarm_emails` parameter
-- [ ] Add `error_rate_threshold = var.error_rate_threshold` parameter
-- [ ] Remove `lambda_bucket_name` parameter
-- [ ] Note: Both variables already exist in parent variables.tf (alarm_emails:49, error_rate_threshold:63)
-- [ ] Note: `security_group_ids` and `subnet_ids` remain in module interface
+- [x] Update module "deregistration" call in registration.tf:23-44
+- [x] Add `alarm_emails = var.alarm_emails` parameter
+- [x] Add `error_rate_threshold = var.error_rate_threshold` parameter
+- [x] Remove `lambda_bucket_name` parameter
+- [x] Note: Both variables already exist in parent variables.tf (alarm_emails:49, error_rate_threshold:63)
+- [x] Note: `security_group_ids` and `subnet_ids` remain in module interface
 
 ### 7. Update terraform.tf version constraints
-- [ ] Verify module version constraint is set to `>= 1.0.4`
+- [x] Verify module version constraint is set to `1.0.4` in main.tf
+- [x] Remove unused `null` and `random` providers from terraform.tf
+- [x] Match record_metric module's provider configuration (aws only)
 
 ## Breaking Changes
 
@@ -299,22 +302,21 @@ Scheduled Sweep (30 min)       → Safety net (catches failures within 30 min)
 ### During Development
 
 **Iterative Testing with `make test-keep`:**
-- [ ] Run `make test-keep` - deploys infrastructure and keeps it running
-- [ ] Manual verification while infrastructure is live:
-  - [ ] Check Lambda function in AWS Console
-  - [ ] Verify environment variables are set correctly
-  - [ ] Check both EventBridge rules are attached (scheduled + lifecycle hook)
-  - [ ] Verify IAM role has correct permissions
-  - [ ] Check CloudWatch Logs for invocations
-  - [ ] Verify SNS topic created for alarms
-  - [ ] Test scheduled execution (wait for 30-minute trigger)
-  - [ ] Test lifecycle hook (trigger instance termination)
-  - [ ] Verify Lambda can access VPC resources
-- [ ] Code formatting and validation:
-  - [ ] `terraform fmt -recursive`
-  - [ ] `terraform validate`
-  - [ ] `terraform-docs .`
-- [ ] Iterate on fixes as needed with infrastructure still deployed
+- [x] Run `make test-keep` - deploys infrastructure and keeps it running
+- [x] Manual verification while infrastructure is live:
+  - [x] Check Lambda function in AWS Console
+  - [x] Verify environment variables are set correctly
+  - [x] Check both EventBridge rules are attached (scheduled + lifecycle hook)
+  - [x] Verify IAM role has correct permissions
+  - [x] Check CloudWatch Logs for invocations
+  - [x] Verify SNS topic created for alarms
+  - [x] Test scheduled execution (wait for 30-minute trigger)
+  - [x] Test lifecycle hook (trigger instance termination)
+  - [x] Verify Lambda can access VPC resources
+- [x] Code formatting and validation:
+  - [x] `terraform fmt -recursive`
+  - [x] `terraform-docs .`
+- [x] Iterate on fixes as needed with infrastructure still deployed
 
 ### After PR Creation
 

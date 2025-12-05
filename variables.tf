@@ -259,7 +259,23 @@ variable "subnet_ids" {
 }
 
 variable "lambda_subnet_ids" {
-  description = "List of subnet ids where the lambda function will run. The subnets must have NAT."
+  description = <<-EOT
+    List of subnet IDs where the Lambda functions (runner_registration, runner_deregistration, record_metric) will run.
+
+    REQUIREMENTS: The subnets MUST have either:
+    - NAT Gateway/Instance for internet access to AWS services, OR
+    - VPC Endpoints for: SSM, Secrets Manager, EC2, AutoScaling, CloudWatch
+
+    The Lambda functions need VPC networking to:
+    - Send SSM commands to EC2 instances (start/stop actions-runner service)
+    - Access Secrets Manager (GitHub credentials, registration tokens)
+    - Call EC2/AutoScaling APIs (describe instances, complete lifecycle actions)
+    - Publish CloudWatch metrics
+
+    If not specified, defaults to var.subnet_ids (runner instance subnets).
+
+    WARNING: Lambda functions will fail if subnets lack internet/AWS service access.
+  EOT
   type        = list(string)
   default     = null
 }
