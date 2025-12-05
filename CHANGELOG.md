@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.1] - 2025-12-05
+
+### Documentation
+
+- Add migration plan for runner_deregistration to lambda-monitored
+- Add migration guide and update plan for runner_deregistration
+
+### Miscellaneous Tasks
+
+- Add initial CHANGELOG.md
+- Update CHANGELOG for 3.1.0
+- Bump version to 3.1.0
+
+### Refactor
+
+- Migrate runner_deregistration to lambda-monitored module
+
+### Build
+
+- Add release automation tooling
+
 ## [3.1.0] - 2025-12-05
 
 ### Miscellaneous Tasks
