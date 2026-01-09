@@ -9,8 +9,9 @@ module "registration" {
   }
   github_app_id                    = var.github_app_id
   registration_token_secret_prefix = local.registration_token_secret_prefix
-  lambda_bucket_name               = aws_s3_bucket.lambda_tmp.bucket
   lambda_timeout                   = var.allowed_drain_time
+  alarm_emails                     = var.alarm_emails
+  error_rate_threshold             = var.error_rate_threshold
   tags                             = local.default_module_tags
   python_version                   = var.python_version
   architecture                     = var.architecture

@@ -24,17 +24,13 @@ resource "aws_cloudwatch_event_rule" "scale" {
 }
 
 resource "aws_cloudwatch_event_target" "scale-in-out" {
-  arn  = aws_lambda_function.main.arn
+  arn  = module.lambda_monitored.lambda_function_arn
   rule = aws_cloudwatch_event_rule.scale.name
 }
 
-resource "aws_cloudwatch_log_group" "lambda" {
-  name              = "/aws/lambda/${aws_lambda_function.main.function_name}"
-  retention_in_days = var.cloudwatch_log_group_retention
-  tags = merge(
-    var.tags,
-    {
-      "asg_name" : var.asg_name
-    }
-  )
+resource "aws_lambda_permission" "allow_cloudwatch_asg_lifecycle_hook" {
+  action        = "lambda:InvokeFunction"
+  function_name = module.lambda_monitored.lambda_function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.scale.arn
 }
