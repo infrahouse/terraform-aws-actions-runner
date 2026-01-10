@@ -1,3 +1,81 @@
+# Runner Registration Module
+
+This module handles the automatic registration of GitHub Actions self-hosted runners when they launch in the
+Auto Scaling Group. It uses a Lambda function triggered by EC2 lifecycle hooks to register instances with your
+GitHub organization before they start accepting workflow jobs.
+
+## Overview
+
+When an EC2 instance launches in the Auto Scaling Group:
+1. An ASG lifecycle hook pauses the instance launch
+2. EventBridge captures the lifecycle event and triggers this Lambda function
+3. The Lambda function:
+   - Retrieves GitHub credentials from AWS Secrets Manager
+   - Obtains a registration token from GitHub API
+   - Registers the instance as a self-hosted runner
+   - Completes the lifecycle action, allowing the instance to continue launching
+
+The module uses the [`infrahouse/lambda-monitored/aws`](https://registry.infrahouse.com/module/infrahouse/lambda-monitored/aws)
+module for standardized monitoring and error alerting.
+
+## Prerequisites
+
+Before using this module, ensure you have:
+
+1. **GitHub Credentials**: Either a GitHub Personal Access Token (classic) or GitHub App credentials stored in
+   AWS Secrets Manager
+   - For GitHub App: The app must have `administration:write` permission at the organization level
+   - See the main [terraform-aws-actions-runner](../../README.md) documentation for setup details
+
+2. **VPC Configuration**:
+   - Valid subnet IDs where Lambda will run (must have internet access or VPC endpoints for AWS services)
+   - Security group IDs that allow outbound HTTPS traffic to GitHub API
+
+3. **Email for Alerts**: At least one email address to receive Lambda error notifications
+   (required for monitoring compliance)
+
+## Key Features
+
+- **Automated Dependency Management**: Uses `lambda-monitored` module for automatic Python dependency packaging
+- **Built-in Monitoring**: Error rate monitoring with SNS alerting
+- **Long Timeout Support**: Default 15-minute timeout to handle slow registrations
+- **Retry Prevention**: Automatic retries disabled to prevent consuming lifecycle hook timeout
+- **Secure Credential Handling**: GitHub credentials retrieved from Secrets Manager at runtime
+
+## Troubleshooting
+
+### Lambda Timeout Errors
+
+If you see timeout errors in CloudWatch Logs:
+- Check VPC connectivity - Lambda must reach GitHub API (api.github.com)
+- Verify security groups allow outbound HTTPS (port 443)
+- Consider NAT Gateway or VPC endpoints for AWS services (Secrets Manager, EC2)
+
+### Registration Failures
+
+If instances fail to register:
+- Verify GitHub credentials in Secrets Manager are valid
+- Check GitHub App permissions include `administration:write`
+- Review CloudWatch Logs for detailed error messages
+- Ensure the lifecycle hook timeout (default: 20 minutes) is longer than `lambda_timeout`
+
+### High Error Rate Alerts
+
+If you receive SNS alerts about high error rates:
+- Check CloudWatch Logs for specific error patterns
+- Verify GitHub API rate limits haven't been exceeded
+- Review recent GitHub organization changes (renamed, archived, etc.)
+
+## Related Documentation
+
+- Main module: [terraform-aws-actions-runner](../../README.md)
+- Monitoring module: [terraform-aws-lambda-monitored](https://registry.infrahouse.com/infrahouse/lambda-monitored/aws)
+- Companion modules:
+  - [runner_deregistration](../runner_deregistration/) - Cleans up runners when instances terminate
+  - [record_metric](../record_metric/) - Records runner metrics to CloudWatch
+
+---
+
 <!-- BEGIN_TF_DOCS -->
 
 ## Requirements

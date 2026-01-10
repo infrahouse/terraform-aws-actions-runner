@@ -52,7 +52,7 @@ variable "cloudwatch_log_group_retention" {
 }
 
 variable "alarm_emails" {
-  description = "List of email addresses to receive alarm notifications for Lambda function errors. At least one email is required for ISO 27001 compliance."
+  description = "List of email addresses to receive alarm notifications for Lambda function errors. At least one email is required for Lambda error monitoring."
   type        = list(string)
   validation {
     condition     = length(var.alarm_emails) > 0
