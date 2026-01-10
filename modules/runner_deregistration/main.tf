@@ -106,9 +106,3 @@ module "lambda_monitored" {
     }
   )
 }
-
-# Disable automatic retries to prevent consuming lifecycle timeout
-resource "aws_lambda_function_event_invoke_config" "no_retry" {
-  function_name          = module.lambda_monitored.lambda_function_name
-  maximum_retry_attempts = 0
-}
