@@ -8,4 +8,7 @@ terraform.tfvars
 .terraform.tfstate.lock.info
 pytest-*-output.log
 /test_data/actions-runner/
-/.claude/settings.local.json
+
+# Ignore Claude local settings
+/.claude/*.local.json
+.claude/reviews

@@ -17,6 +17,7 @@ variable "cloudwatch_log_group_retention" {
 
 variable "github_org_name" {
   description = "GitHub organization name."
+  type        = string
 }
 
 variable "github_credentials" {
@@ -31,6 +32,7 @@ variable "github_credentials" {
 
 variable "github_app_id" {
   description = "GitHub App that gives out GitHub tokens for Terraform. For instance, https://github.com/organizations/infrahouse/settings/apps/infrahouse-github-terraform"
+  type        = string
 }
 
 variable "alarm_emails" {
@@ -54,15 +56,19 @@ variable "error_rate_threshold" {
 
 variable "lambda_timeout" {
   description = "Time in seconds to let lambda run."
+  type        = number
   default     = 900
 }
 
 variable "python_version" {
-  default = "python3.12"
+  description = "Python version to run lambda on. Must one of https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html"
+  type        = string
+  default     = "python3.12"
 }
 
 variable "registration_token_secret_prefix" {
   description = "Secret name prefix that will store a registration token"
+  type        = string
 }
 
 variable "security_group_ids" {
@@ -75,4 +81,8 @@ variable "subnet_ids" {
   type        = list(string)
 }
 
-variable "tags" {}
+variable "tags" {
+  description = "A map of tags to assign to resources."
+  type        = map(string)
+  default     = {}
+}
