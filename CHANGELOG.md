@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.2.0] - 2026-01-10
+
+### Bug Fixes
+
+- Add event invoke config and improve variable definitions
+- Remove duplicate event invoke config resources
+
+### Documentation
+
+- Improve module documentation and remove ISO 27001 references
+
+### Features
+
+- Migrate runner_registration to lambda-monitored module
+
 ## [3.1.1] - 2025-12-05
 
 ### Documentation
