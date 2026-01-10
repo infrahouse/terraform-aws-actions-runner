@@ -36,6 +36,7 @@ variable "error_rate_threshold" {
 
 variable "github_org_name" {
   description = "GitHub organization name."
+  type        = string
 }
 
 variable "github_credentials" {
@@ -50,6 +51,7 @@ variable "github_credentials" {
 
 variable "github_app_id" {
   description = "GitHub App that gives out GitHub tokens for Terraform. For instance, https://github.com/organizations/infrahouse/settings/apps/infrahouse-github-terraform"
+  type        = string
 }
 
 variable "installation_id" {
@@ -59,15 +61,18 @@ variable "installation_id" {
 
 variable "lambda_timeout" {
   description = "Time in seconds to let lambda run."
+  type        = number
   default     = 30
 }
 
 variable "registration_token_secret_prefix" {
   description = "Secret name prefix that will store a registration token"
+  type        = string
 }
 
 variable "python_version" {
   description = "Python version to run lambda on. Must one of https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html"
+  type        = string
   default     = "python3.12"
 }
 
@@ -81,4 +86,8 @@ variable "subnet_ids" {
   type        = list(string)
 }
 
-variable "tags" {}
+variable "tags" {
+  description = "A map of tags to assign to resources."
+  type        = map(string)
+  default     = {}
+}
