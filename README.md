@@ -30,7 +30,7 @@ Self-hosted runners offer several advantages over GitHub-hosted runners:
     - Built-in error monitoring and alerting via SNS for Lambda functions
     - Standardized CloudWatch integration with configurable error rate thresholds
     - **Breaking:** Removed `lambda_bucket_name` variable - the module now creates its own S3 bucket for Lambda packages
-    - **New Required:** `alarm_emails` variable - list of email addresses for Lambda error notifications (required for ISO 27001 compliance)
+    - **New Required:** `alarm_emails` variable - list of email addresses for Lambda error notifications (required for Lambda error monitoring)
     - **New Optional:** `error_rate_threshold` variable - error rate percentage threshold for alerting (default: 10.0)
 - **AWS Provider 5 and 6 Support:** The module now supports both AWS provider version 5 and 6, ensuring compatibility across major versions.
 - **Enhanced Input Validation:** Added validation blocks for `architecture`, `max_instance_lifetime_days`, and other critical variables to catch configuration errors early.
@@ -192,7 +192,7 @@ module "actions-runner" {
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
-| <a name="input_alarm_emails"></a> [alarm\_emails](#input\_alarm\_emails) | List of email addresses to receive alarm notifications for Lambda function errors. At least one email is required for ISO 27001 compliance. | `list(string)` | n/a | yes |
+| <a name="input_alarm_emails"></a> [alarm\_emails](#input\_alarm\_emails) | List of email addresses to receive alarm notifications for Lambda function errors. At least one email is required for Lambda error monitoring. | `list(string)` | n/a | yes |
 | <a name="input_allowed_drain_time"></a> [allowed\_drain\_time](#input\_allowed\_drain\_time) | How many seconds to give a running job to finish after the instance fails health checks. Maximum allowed value is 900 seconds. | `number` | `900` | no |
 | <a name="input_ami_id"></a> [ami\_id](#input\_ami\_id) | AMI id for EC2 instances. By default, latest Ubuntu var.ubuntu\_codename. | `string` | `null` | no |
 | <a name="input_architecture"></a> [architecture](#input\_architecture) | The CPU architecture for the Lambda function; valid values are `x86_64` or `arm64`. | `string` | `"x86_64"` | no |
