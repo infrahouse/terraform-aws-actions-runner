@@ -4,7 +4,7 @@ This document explains how the InfraHouse GitHub Actions Runner module works.
 
 ## Overview
 
-![Architecture](assets/architecture.svg)
+![Architecture](assets/architecture.png)
 
 ## Components
 

@@ -3,7 +3,7 @@
 This Terraform module creates an Auto Scaling Group (ASG) and registers its instances
 as self-hosted runners for GitHub Actions.
 
-![Architecture](assets/architecture.svg)
+![Architecture](assets/architecture.png)
 
 ## Why This Module?
 
