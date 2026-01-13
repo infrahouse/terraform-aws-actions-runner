@@ -1,6 +1,6 @@
-site_name: InfraHouse terraform-aws-actions-runner
+site_name: InfraHouse GitHub Actions Runner
 site_url: https://infrahouse.github.io/terraform-aws-actions-runner/
-site_description: Terraform module documentation
+site_description: Terraform module for self-hosted GitHub Actions runners on AWS with warm pool support
 site_author: InfraHouse
 
 repo_url: https://github.com/infrahouse/terraform-aws-actions-runner
@@ -36,6 +36,14 @@ theme:
 
 nav:
   - Home: index.md
+  - Getting Started: getting-started.md
+  - Architecture: architecture.md
+  - Configuration: configuration.md
+  - Authentication: authentication.md
+  - Scaling: scaling.md
+  - Monitoring: monitoring.md
+  - Troubleshooting: troubleshooting.md
+  - Comparison: comparison.md
 
 markdown_extensions:
   - pymdownx.highlight:
