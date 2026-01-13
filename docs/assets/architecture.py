@@ -22,24 +22,27 @@ from diagrams.aws.security import SecretsManager, IAM
 from diagrams.aws.network import VPC
 from diagrams.onprem.vcs import Github
 
+fontsize = "16"
 
-# Match MkDocs Material theme fonts
+# Match MkDocs Material theme fonts (Roboto)
+# Increase sizes for better readability
 graph_attr = {
     "splines": "spline",
-    "nodesep": "1.0",
-    "ranksep": "1.2",
-    "fontsize": "14",
+    "nodesep": "1.5",
+    "ranksep": "1.5",
+    "fontsize": fontsize,
     "fontname": "Roboto",
+    "dpi": "200",           # Higher resolution
 }
 
 node_attr = {
     "fontname": "Roboto",
-    "fontsize": "14",
+    "fontsize": fontsize,
 }
 
 edge_attr = {
     "fontname": "Roboto",
-    "fontsize": "16",
+    "fontsize": fontsize,
 }
 
 with Diagram(
@@ -53,14 +56,16 @@ with Diagram(
     outformat="png",
 ):
     # External - GitHub
-    github = Github("GitHub\nOrganization")
+    github = Github(
+        "\nGitHub\nOrganization"
+    )
 
     with Cluster("AWS Account"):
         
         # Secrets and credentials
         with Cluster("Secrets Manager"):
-            secrets = SecretsManager("GitHub Token\nor App PEM")
-            reg_token = SecretsManager("Registration\nTokens")
+            secrets = SecretsManager("\nGitHub Token\nor App PEM")
+            reg_token = SecretsManager("\nRegistration\nTokens")
         
         with Cluster("VPC"):
             # sg = VPC("Security Group\n(SSH, ICMP, Egress)")
@@ -72,49 +77,71 @@ with Diagram(
                 # Active runners
                 with Cluster("Active Instances"):
                     runners = [
-                        EC2("Runner"),
-                        EC2("Runner"),
-                        EC2("Runner"),
+                        EC2("\nRunner"),
+                        EC2("\nRunner"),
+                        EC2("\nRunner"),
                     ]
                 
                 # Warm Pool
                 with Cluster("Warm Pool (Hibernated)"):
                     warm = [
-                        EC2("Standby"),
-                        EC2("Standby"),
+                        EC2("\nStandby"),
+                        EC2("\nStandby"),
                     ]
             
                 # ASG configuration
-                asg_hooks = AutoScaling("ASG\nLifecycle Hooks")
+                asg_hooks = AutoScaling(
+                    dedent(
+                        """
+                        ASG
+                        Lifecycle Hooks
+                        """
+                    )
+                )
         
         # Lambda functions
         with Cluster("Lambda Functions"):
-            lambda_reg = Lambda("Registration\nLambda")
-            lambda_dereg = Lambda("Deregistration\nLambda")
-            lambda_metric = Lambda("Record Metric\nLambda")
+            lambda_reg = Lambda("\nRegistration")
+            lambda_dereg = Lambda("\nDeregistration")
+            lambda_metric = Lambda("\nRecord Metric")
         
         # CloudWatch
         with Cluster("CloudWatch"):
-            metric = Cloudwatch("IdleRunners\nMetric")
-            with Cluster("Alarms"):
+            metric = Cloudwatch(
+                dedent(
+                    """
+                    IdleRunners
+                    Metric
+                    """
+                )
+            )
+            with Cluster("IdleRunners Alarms"):
                 alarm_low = Cloudwatch(
-                    "IdleRunnersTooLow"
+                    dedent(
+                        """
+                        TooLow
+                        """
+                    )
                 )
                 alarm_high = Cloudwatch(
-                    "IdleRunnersTooHigh"
+                    dedent(
+                        """
+                        TooHigh
+                        """
+                    )
                 )
 
         # Scaling policies
-        with Cluster("Autoscaling"):
+        with Cluster("Autoscaling Policies"):
             scale_out = AutoScaling(
-                "Scale Out\nPolicy"
+                "\nScale Out"
             )
             scale_in = AutoScaling(
-                "Scale In\nPolicy"
+                "\nScale In"
             )
         
         # SSM
-        ssm = SystemsManager("SSM\nsystemctl start")
+        ssm = SystemsManager("\nSSM\nsystemctl start")
         
         # IAM
         # iam = IAM("Instance Profile\n+ Lambda Roles")

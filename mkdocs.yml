@@ -69,6 +69,7 @@ markdown_extensions:
 
 plugins:
   - search
+  - glightbox
   - minify:
       minify_html: true
 
