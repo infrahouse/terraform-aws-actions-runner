@@ -302,3 +302,19 @@ variable "warm_pool_max_size" {
   type        = number
   default     = null
 }
+
+variable "compress_userdata" {
+  description = <<-EOT
+    Compress userdata with gzip to reduce size and work around AWS 16KB limit.
+
+    When enabled, userdata is gzip-compressed before being sent to EC2 instances.
+    AWS automatically decompresses it before execution. This can reduce userdata
+    size by 60-70%, allowing more packages, files, and configuration.
+
+    Recommended: Enable if userdata_size_info shows approaching limit (>12KB).
+
+    Requirements: gzip command must be available on the system running terraform.
+  EOT
+  type        = bool
+  default     = false
+}
