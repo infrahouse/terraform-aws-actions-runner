@@ -37,6 +37,7 @@ module "userdata" {
   puppet_root_directory    = var.puppet_root_directory
   puppet_manifest          = var.puppet_manifest
   ubuntu_codename          = var.ubuntu_codename
+  gzip_userdata            = var.compress_userdata
   packages = concat(
     var.packages,
     [
