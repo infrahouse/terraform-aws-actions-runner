@@ -26,7 +26,7 @@ module "instance-profile" {
 
 module "userdata" {
   source  = "registry.infrahouse.com/infrahouse/cloud-init/aws"
-  version = "2.2.2"
+  version = "2.2.3"
 
   environment              = var.environment
   role                     = "gha_runner"
