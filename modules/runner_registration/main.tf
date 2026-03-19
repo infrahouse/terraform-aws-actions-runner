@@ -15,13 +15,34 @@ data "aws_iam_policy_document" "runner_registration_permissions" {
     ]
   }
   statement {
+    # Describe actions require "*" resource
     actions = [
       "ec2:DescribeInstances",
       "ec2:DescribeTags",
-      "ssm:SendCommand",
       "ssm:GetCommandInvocation",
     ]
     resources = ["*"]
+  }
+  statement {
+    actions = [
+      "ssm:SendCommand",
+    ]
+    resources = [
+      "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:instance/*",
+    ]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceTag/aws:autoscaling:groupName"
+      values   = [var.asg_name]
+    }
+  }
+  statement {
+    actions = [
+      "ssm:SendCommand",
+    ]
+    resources = [
+      "arn:aws:ssm:${data.aws_region.current.name}::document/AWS-RunShellScript",
+    ]
   }
   statement {
     actions = [
