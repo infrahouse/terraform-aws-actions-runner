@@ -227,6 +227,18 @@ resource "aws_autoscaling_group" "actions-runner" {
       value               = tag.value
     }
   }
+  lifecycle {
+    precondition {
+      condition     = var.on_demand_base_capacity != null ? true : var.root_volume_size >= local.instance_memory_gb + 10
+      error_message = <<-EOT
+        Warm pool uses hibernation, which requires root_volume_size to be at least
+        as large as the instance RAM plus some overhead.
+        Instance type ${var.instance_type} has ${local.instance_memory_gb} GB RAM,
+        but root_volume_size is only ${var.root_volume_size} GB.
+        Set root_volume_size to at least ${local.instance_memory_gb + 10} GB.
+      EOT
+    }
+  }
   depends_on = [
     module.instance-profile
   ]
