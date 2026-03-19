@@ -1,0 +1,27 @@
+# Checkov configuration for terraform-aws-actions-runner module
+
+framework:
+  - terraform
+
+skip-path:
+  - test_data
+
+skip-check:
+  # CKV_TF_1: Module sources use version pins from private registry (registry.infrahouse.com)
+  # InfraHouse standard: exact version pinning from registry.infrahouse.com,
+  # which provides better maintainability than commit hash pinning.
+  # Renovate manages version updates via individual PRs for explicit review.
+  - CKV_TF_1
+
+  # CKV_TF_2: Module sources use version pins from private registry
+  # Same as CKV_TF_1 - Renovate handles module version updates.
+  - CKV_TF_2
+
+  # CKV_AWS_356: IAM policy uses "*" as resource for restrictable actions
+  # ec2:DescribeInstances and autoscaling:DescribeAutoScalingInstances require
+  # "*" resource - they cannot be scoped to specific ARNs. This is standard
+  # AWS IAM practice for describe actions.
+  - CKV_AWS_356
+
+compact: true
+quiet: false
