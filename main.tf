@@ -191,8 +191,8 @@ resource "aws_autoscaling_group" "actions-runner" {
     for_each = var.on_demand_base_capacity == null ? [1] : []
     content {
       pool_state                  = "Hibernated"
-      min_size                    = var.warm_pool_min_size != null ? var.warm_pool_min_size : var.idle_runners_target_count + 1
-      max_group_prepared_capacity = var.warm_pool_max_size != null ? var.warm_pool_max_size : var.asg_max_size
+      min_size                    = local.warm_pool_min
+      max_group_prepared_capacity = local.warm_pool_max
       instance_reuse_policy {
         reuse_on_scale_in = false
       }
