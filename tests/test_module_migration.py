@@ -41,9 +41,7 @@ def write_main_tf(terraform_module_dir, source, version=None):
     version_line = f'  version = "{version}"\n' if version else ""
 
     with open(osp.join(terraform_module_dir, "main.tf"), "w") as fp:
-        fp.write(
-            dedent(
-                f"""
+        fp.write(dedent(f"""
                 module "actions-runner" {{
                   source  = "{source}"
                   {version_line}
@@ -69,9 +67,7 @@ def write_main_tf(terraform_module_dir, source, version=None):
                     "aleks+terraform-aws-actions-runner@infrahouse.com"
                   ]
                 }}
-                """
-            )
-        )
+                """))
 
 
 @pytest.mark.parametrize("aws_provider_version", ["~> 5.62"], ids=["aws-5"])
@@ -132,9 +128,7 @@ def test_module_migration(
 
     # Generate terraform.tf with specified AWS provider version
     with open(osp.join(terraform_module_dir, "terraform.tf"), "w") as fp:
-        fp.write(
-            dedent(
-                f"""
+        fp.write(dedent(f"""
                 terraform {{
                   required_version = "~> 1.5"
                   //noinspection HILUnresolvedReference
@@ -145,15 +139,11 @@ def test_module_migration(
                     }}
                   }}
                 }}
-                """
-            )
-        )
+                """))
 
     with open(osp.join(terraform_module_dir, "terraform.tfvars"), "w") as fp:
         asg_max_size = 2
-        fp.write(
-            dedent(
-                f"""
+        fp.write(dedent(f"""
                     region          = "{aws_region}"
                     github_org_name = "{GITHUB_ORG_NAME}"
                     ubuntu_codename = "{ubuntu_codename}"
@@ -163,27 +153,19 @@ def test_module_migration(
                     architecture       = "{platform.machine()}"
                     python_version     = "python{sys.version_info.major}.{sys.version_info.minor}"
                     asg_max_size = {asg_max_size}
-                    """
-            )
-        )
+                    """))
         if test_role_arn:
-            fp.write(
-                dedent(
-                    f"""
+            fp.write(dedent(f"""
                     role_arn        = "{test_role_arn}"
-                    """
-                )
-            )
+                    """))
 
         fp.write(
             f'github_token = "{github_token}"'
             if secret_type == "token"
-            else dedent(
-                f"""
+            else dedent(f"""
                 github_app_pem_secret_arn = "{github_app_pem_secret_arn}"
                 github_app_id = {GH_APP_ID}
-                """
-            )
+                """)
         )
 
     # PHASE 1: Deploy old version (3.0.3)
