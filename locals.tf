@@ -19,8 +19,11 @@ locals {
   )
 
   ami_id             = var.ami_id == null ? data.aws_ami.ubuntu.id : var.ami_id
-  instance_memory_gb = ceil(data.aws_ec2_instance_type.this.memory_size / 1024)
-  warm_pool_max      = var.warm_pool_max_size != null ? var.warm_pool_max_size : var.asg_max_size
+  instance_memory_gb = ceil(data.aws_ec2_instance_type.this.memory_size / 1024.0)
+  # Extra space on root volume for OS, packages, and swap beyond what hibernation needs for RAM
+  hibernation_volume_overhead_gb = 10
+  warm_pool_max                  = var.warm_pool_max_size != null ? var.warm_pool_max_size : var.asg_max_size
+  # +1 ensures at least one pre-warmed instance is always available during scale-out
   warm_pool_min = min(
     var.warm_pool_min_size != null ? var.warm_pool_min_size : var.idle_runners_target_count + 1,
     local.warm_pool_max

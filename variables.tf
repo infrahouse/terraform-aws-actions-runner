@@ -136,7 +136,7 @@ variable "instance_type" {
 }
 
 variable "gzip_userdata" {
-  description = "Whether to compress user data or not."
+  description = "Whether to compress user data. Enable if user data exceeds the EC2 16 KB limit (base64-encoded)."
   type        = bool
   default     = false
 }
@@ -304,7 +304,7 @@ variable "warm_pool_min_size" {
 }
 
 variable "warm_pool_max_size" {
-  description = "Max allowed number of instances in the warm pool. By default, as many as idle runners count target plus one."
+  description = "Max allowed number of instances in the warm pool. By default, same as asg_max_size."
   type        = number
   default     = null
 }
