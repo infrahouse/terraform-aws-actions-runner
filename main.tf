@@ -26,7 +26,7 @@ module "instance-profile" {
 
 module "userdata" {
   source  = "registry.infrahouse.com/infrahouse/cloud-init/aws"
-  version = "2.2.2"
+  version = "2.2.3"
 
   environment              = var.environment
   role                     = "gha_runner"
@@ -37,6 +37,7 @@ module "userdata" {
   puppet_root_directory    = var.puppet_root_directory
   puppet_manifest          = var.puppet_manifest
   ubuntu_codename          = var.ubuntu_codename
+  gzip_userdata            = var.gzip_userdata
   packages = concat(
     var.packages,
     [
