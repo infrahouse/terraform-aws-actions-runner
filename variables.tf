@@ -135,6 +135,12 @@ variable "instance_type" {
   default     = "t3a.micro"
 }
 
+variable "gzip_userdata" {
+  description = "Whether to compress user data or not."
+  type        = bool
+  default     = false
+}
+
 variable "github_token_secret_arn" {
   description = "ARN of a secret that stores GitHub token. Either github_token_secret_arn or github_app_pem_secret_arn is required."
   type        = string

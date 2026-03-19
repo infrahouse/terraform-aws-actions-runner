@@ -1,5 +1,16 @@
 # terraform-aws-actions-runner
 
+[![Need Help?](https://img.shields.io/badge/Need%20Help%3F-Contact%20Us-0066CC)](https://infrahouse.com/contact)
+[![Docs](https://img.shields.io/badge/docs-github.io-blue)](https://infrahouse.github.io/terraform-aws-actions-runner/)
+[![Registry](https://img.shields.io/badge/Terraform-Registry-purple?logo=terraform)](https://registry.terraform.io/modules/infrahouse/actions-runner/aws/latest)
+[![Release](https://img.shields.io/github/release/infrahouse/terraform-aws-actions-runner.svg)](https://github.com/infrahouse/terraform-aws-actions-runner/releases/latest)
+[![Security](https://img.shields.io/github/actions/workflow/status/infrahouse/terraform-aws-actions-runner/vuln-scanner-pr.yml?label=Security)](https://github.com/infrahouse/terraform-aws-actions-runner/actions/workflows/vuln-scanner-pr.yml)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
+[![AWS EC2](https://img.shields.io/badge/AWS-EC2-orange?logo=amazonec2)](https://aws.amazon.com/ec2/)
+[![AWS Lambda](https://img.shields.io/badge/AWS-Lambda-orange?logo=awslambda)](https://aws.amazon.com/lambda/)
+[![Self-Hosted Runners](https://img.shields.io/badge/GitHub-Self--Hosted%20Runners-blue?logo=githubactions)](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners)
+
 This Terraform module creates an Auto Scaling Group (ASG) and registers its instances
 as self-hosted runners for GitHub Actions. It supports authentication using either a
 classic GitHub token or temporary tokens obtained via a GitHub App.
@@ -153,7 +164,7 @@ module "actions-runner" {
 | <a name="module_instance-profile"></a> [instance-profile](#module\_instance-profile) | registry.infrahouse.com/infrahouse/instance-profile/aws | 1.9.0 |
 | <a name="module_record_metric"></a> [record\_metric](#module\_record\_metric) | ./modules/record_metric | n/a |
 | <a name="module_registration"></a> [registration](#module\_registration) | ./modules/runner_registration | n/a |
-| <a name="module_userdata"></a> [userdata](#module\_userdata) | registry.infrahouse.com/infrahouse/cloud-init/aws | 2.2.2 |
+| <a name="module_userdata"></a> [userdata](#module\_userdata) | registry.infrahouse.com/infrahouse/cloud-init/aws | 2.2.3 |
 
 ## Resources
 
@@ -213,6 +224,7 @@ module "actions-runner" {
 | <a name="input_github_app_pem_secret_arn"></a> [github\_app\_pem\_secret\_arn](#input\_github\_app\_pem\_secret\_arn) | ARN of a secret that stores GitHub App PEM key. Either github\_token\_secret\_arn or github\_app\_pem\_secret\_arn is required. | `string` | `null` | no |
 | <a name="input_github_org_name"></a> [github\_org\_name](#input\_github\_org\_name) | GitHub organization name. | `string` | n/a | yes |
 | <a name="input_github_token_secret_arn"></a> [github\_token\_secret\_arn](#input\_github\_token\_secret\_arn) | ARN of a secret that stores GitHub token. Either github\_token\_secret\_arn or github\_app\_pem\_secret\_arn is required. | `string` | `null` | no |
+| <a name="input_gzip_userdata"></a> [gzip\_userdata](#input\_gzip\_userdata) | Whether to compress user data or not. | `bool` | `false` | no |
 | <a name="input_idle_runners_target_count"></a> [idle\_runners\_target\_count](#input\_idle\_runners\_target\_count) | How many idle runners to aim for in the autoscaling policy. | `number` | `1` | no |
 | <a name="input_instance_type"></a> [instance\_type](#input\_instance\_type) | EC2 Instance type | `string` | `"t3a.micro"` | no |
 | <a name="input_keypair_name"></a> [keypair\_name](#input\_keypair\_name) | SSH key pair name that will be added to the actions runner instance. By default, create and use a new SSH keypair. | `string` | `null` | no |
