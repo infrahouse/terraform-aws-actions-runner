@@ -38,8 +38,8 @@ test:  ## Run tests on the module
 
 .PHONY: bootstrap
 bootstrap: install-hooks ## bootstrap the development environment
-	pip install -U "pip ~= 25.2"
-	pip install -U "setuptools ~= 80.9"
+	pip install -U "pip ~= 26.0"
+	pip install -U "setuptools ~= 82.0"
 	pip install -r requirements.txt
 
 .PHONY: clean
