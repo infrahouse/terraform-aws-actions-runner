@@ -68,7 +68,7 @@ def ensure_runners(
                         runners[0].instance_id,
                     )
                     asg_instance = ASGInstance(
-                        runners[0].instance_id,
+                        instance_id=runners[0].instance_id,
                         role_arn=test_role_arn,
                         region=aws_region,
                     )

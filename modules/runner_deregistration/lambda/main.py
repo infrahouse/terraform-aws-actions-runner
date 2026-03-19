@@ -87,7 +87,7 @@ def _clean_runners(gha: GitHubActions, installation_id: str):
     for runner in gha.find_runners_by_label(f"installation_id:{installation_id}"):
         LOG.info("Found runner %s", runner.name)
         try:
-            if ASGInstance(runner.instance_id).state == "terminated":
+            if ASGInstance(instance_id=runner.instance_id).state == "terminated":
                 LOG.info(
                     "Instance %s is terminated. Will deregister the runner %s.",
                     runner.instance_id,
