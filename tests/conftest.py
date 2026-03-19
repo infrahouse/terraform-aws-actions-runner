@@ -15,7 +15,6 @@ from pytest_infrahouse.plugin import aws_region
 from pytest_infrahouse.utils import wait_for_instance_refresh
 from requests import get
 
-
 LOG = logging.getLogger(__name__)
 GITHUB_ORG_NAME = "infrahouse"
 TERRAFORM_ROOT_DIR = "test_data"
