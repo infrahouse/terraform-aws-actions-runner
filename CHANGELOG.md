@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.3.0] - 2026-03-19
+
+### Bug Fixes
+
+- Clamp warm pool min_size to not exceed max_group_prepared_capacity
+- Add precondition to validate root volume size for warm pool hibernation
+- Address review findings for warm pool and gzip_userdata changes
+- Use keyword argument for ASGInstance(instance_id=...) calls
+
+### Documentation
+
+- Add comprehensive MkDocs documentation with GitHub Pages deployment
+- Add comprehensive MkDocs documentation with GitHub Pages deployment
+- Add comprehensive MkDocs documentation with GitHub Pages deployment
+- Fix original docs index
+- Update architecture using diagrams
+- Improve architecture diagram readability
+- Improve architecture diagram readability
+
+### Features
+
+- Add gzip_userdata variable to support compressed user data
+
+### Miscellaneous Tasks
+
+- Bump black to 26.3.1 and fix its findings
+
+### Ci
+
+- Add .checkov.yml configuration for Checkov security scanning
+
+### Security
+
+- Scope IAM policies for SSM SendCommand and ASG lifecycle actions
+
 ## [3.2.0] - 2026-01-10
 
 ### Bug Fixes
