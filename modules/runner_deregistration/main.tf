@@ -1,31 +1,50 @@
+# Local values needed for IAM policy
+locals {
+  asg_arn = "arn:aws:autoscaling:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:autoScalingGroup:*:autoScalingGroupName/${var.asg_name}"
+}
+
 # Custom IAM policy for runner_deregistration lambda
 data "aws_iam_policy_document" "runner_deregistration_permissions" {
   statement {
     actions = [
-      "sts:GetCallerIdentity",
-      "autoscaling:CompleteLifecycleAction"
+      "autoscaling:CompleteLifecycleAction",
     ]
     resources = [
-      "*"
+      local.asg_arn
     ]
   }
   statement {
+    # Describe actions require "*" resource
     actions = [
+      "sts:GetCallerIdentity",
       "ec2:DescribeInstances",
       "ec2:DescribeTags",
-      "ssm:SendCommand",
       "ssm:GetCommandInvocation",
+      "autoscaling:DescribeAutoScalingGroups",
+      "autoscaling:DescribeAutoScalingInstances",
+      "autoscaling:DescribeWarmPool",
     ]
     resources = ["*"]
   }
   statement {
     actions = [
-      "autoscaling:DescribeAutoScalingGroups",
-      "autoscaling:DescribeAutoScalingInstances",
-      "autoscaling:DescribeWarmPool",
+      "ssm:SendCommand",
     ]
     resources = [
-      "*"
+      "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:instance/*",
+    ]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceTag/aws:autoscaling:groupName"
+      values   = [var.asg_name]
+    }
+  }
+  statement {
+    actions = [
+      "ssm:SendCommand",
+    ]
+    resources = [
+      "arn:aws:ssm:${data.aws_region.current.name}::document/AWS-RunShellScript",
     ]
   }
   statement {

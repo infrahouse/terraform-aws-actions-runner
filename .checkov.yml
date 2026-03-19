@@ -23,5 +23,10 @@ skip-check:
   # AWS IAM practice for describe actions.
   - CKV_AWS_356
 
+  # CKV_AWS_277: ICMP ingress from 0.0.0.0/0 on the runner security group.
+  # Runners live in private subnets. ICMP is needed for path MTU discovery
+  # and network troubleshooting.
+  - CKV_AWS_277
+
 compact: true
 quiet: false
