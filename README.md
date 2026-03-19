@@ -8,6 +8,7 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 [![AWS EC2](https://img.shields.io/badge/AWS-EC2-orange?logo=amazonec2)](https://aws.amazon.com/ec2/)
+[![AWS Auto Scaling](https://img.shields.io/badge/AWS-Auto%20Scaling-orange?logo=amazonec2)](https://aws.amazon.com/autoscaling/)
 [![AWS Lambda](https://img.shields.io/badge/AWS-Lambda-orange?logo=awslambda)](https://aws.amazon.com/lambda/)
 [![Self-Hosted Runners](https://img.shields.io/badge/GitHub-Self--Hosted%20Runners-blue?logo=githubactions)](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners)
 
@@ -224,7 +225,7 @@ module "actions-runner" {
 | <a name="input_github_app_pem_secret_arn"></a> [github\_app\_pem\_secret\_arn](#input\_github\_app\_pem\_secret\_arn) | ARN of a secret that stores GitHub App PEM key. Either github\_token\_secret\_arn or github\_app\_pem\_secret\_arn is required. | `string` | `null` | no |
 | <a name="input_github_org_name"></a> [github\_org\_name](#input\_github\_org\_name) | GitHub organization name. | `string` | n/a | yes |
 | <a name="input_github_token_secret_arn"></a> [github\_token\_secret\_arn](#input\_github\_token\_secret\_arn) | ARN of a secret that stores GitHub token. Either github\_token\_secret\_arn or github\_app\_pem\_secret\_arn is required. | `string` | `null` | no |
-| <a name="input_gzip_userdata"></a> [gzip\_userdata](#input\_gzip\_userdata) | Whether to compress user data or not. | `bool` | `false` | no |
+| <a name="input_gzip_userdata"></a> [gzip\_userdata](#input\_gzip\_userdata) | Whether to compress user data. Enable if user data exceeds the EC2 16 KB limit (base64-encoded). | `bool` | `false` | no |
 | <a name="input_idle_runners_target_count"></a> [idle\_runners\_target\_count](#input\_idle\_runners\_target\_count) | How many idle runners to aim for in the autoscaling policy. | `number` | `1` | no |
 | <a name="input_instance_type"></a> [instance\_type](#input\_instance\_type) | EC2 Instance type | `string` | `"t3a.micro"` | no |
 | <a name="input_keypair_name"></a> [keypair\_name](#input\_keypair\_name) | SSH key pair name that will be added to the actions runner instance. By default, create and use a new SSH keypair. | `string` | `null` | no |
@@ -246,7 +247,7 @@ module "actions-runner" {
 | <a name="input_subnet_ids"></a> [subnet\_ids](#input\_subnet\_ids) | List of subnet ids where the actions runner instances will be created. | `list(string)` | n/a | yes |
 | <a name="input_tags"></a> [tags](#input\_tags) | A map of tags to add to resources. | `map(string)` | `{}` | no |
 | <a name="input_ubuntu_codename"></a> [ubuntu\_codename](#input\_ubuntu\_codename) | Ubuntu version to use for the actions runner. | `string` | `"noble"` | no |
-| <a name="input_warm_pool_max_size"></a> [warm\_pool\_max\_size](#input\_warm\_pool\_max\_size) | Max allowed number of instances in the warm pool. By default, as many as idle runners count target plus one. | `number` | `null` | no |
+| <a name="input_warm_pool_max_size"></a> [warm\_pool\_max\_size](#input\_warm\_pool\_max\_size) | Max allowed number of instances in the warm pool. By default, same as asg\_max\_size. | `number` | `null` | no |
 | <a name="input_warm_pool_min_size"></a> [warm\_pool\_min\_size](#input\_warm\_pool\_min\_size) | How many instances to keep in the warm pool. By default, as many as idle runners count target plus one. | `number` | `null` | no |
 
 ## Outputs
