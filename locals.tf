@@ -18,7 +18,13 @@ locals {
     "ubuntu/images/hvm-ssd-gp3/ubuntu-${var.ubuntu_codename}-*"
   )
 
-  ami_id                           = var.ami_id == null ? data.aws_ami.ubuntu.id : var.ami_id
+  ami_id        = var.ami_id == null ? data.aws_ami.ubuntu.id : var.ami_id
+  warm_pool_max = var.warm_pool_max_size != null ? var.warm_pool_max_size : var.asg_max_size
+  warm_pool_min = min(
+    var.warm_pool_min_size != null ? var.warm_pool_min_size : var.idle_runners_target_count + 1,
+    local.warm_pool_max
+  )
+
   registration_token_secret_prefix = "GH-reg-token-${random_string.reg_token_suffix.result}"
   registration_hookname            = "registration"
   deregistration_hookname          = "deregistration"
