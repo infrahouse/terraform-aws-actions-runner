@@ -76,6 +76,15 @@ Each Lambda has:
 |-------|-----------|--------|
 | `*_errors` | Any error (immediate) or error rate > threshold | SNS notification |
 | `*_throttles` | Any throttle | SNS notification |
+| `*_memory` | Memory utilization > 80% | SNS notification |
+
+The memory alarm is backed by the `LambdaInsights/memory_utilization` metric.
+Lambda Insights is enabled on every function in this module so the alarm can
+fire before a function runs out of memory — the originally reported incident
+was a silent OOM in the `runner_deregistration` sweep that left stale runners
+in GitHub. If the alarm ever fires, check the function's recent invocations in
+CloudWatch Logs Insights and either reduce memory pressure in the handler or
+increase the function's `memory_size`.
 
 ## Log Retention
 

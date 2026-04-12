@@ -95,7 +95,7 @@ If you receive SNS alerts about high error rates:
 
 | Name | Source | Version |
 |------|--------|---------|
-| <a name="module_lambda_monitored"></a> [lambda\_monitored](#module\_lambda\_monitored) | registry.infrahouse.com/infrahouse/lambda-monitored/aws | 1.0.4 |
+| <a name="module_lambda_monitored"></a> [lambda\_monitored](#module\_lambda\_monitored) | registry.infrahouse.com/infrahouse/lambda-monitored/aws | 1.1.0 |
 
 ## Resources
 
@@ -114,20 +114,20 @@ If you receive SNS alerts about high error rates:
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
-| <a name="input_alarm_emails"></a> [alarm\_emails](#input\_alarm\_emails) | List of email addresses to receive alarm notifications for Lambda errors. At least one email is required for ISO 27001 compliance. | `list(string)` | n/a | yes |
+| <a name="input_alarm_emails"></a> [alarm\_emails](#input\_alarm\_emails) | List of email addresses to receive alarm notifications for Lambda errors. At least one email is required for Lambda error monitoring. | `list(string)` | n/a | yes |
 | <a name="input_architecture"></a> [architecture](#input\_architecture) | The CPU architecture for the Lambda function; valid values are `x86_64` or `arm64`. | `string` | `"x86_64"` | no |
 | <a name="input_asg_name"></a> [asg\_name](#input\_asg\_name) | Autoscaling group name to assign this lambda to. | `string` | n/a | yes |
 | <a name="input_cloudwatch_log_group_retention"></a> [cloudwatch\_log\_group\_retention](#input\_cloudwatch\_log\_group\_retention) | Number of days you want to retain log events in the log group. | `number` | `365` | no |
 | <a name="input_error_rate_threshold"></a> [error\_rate\_threshold](#input\_error\_rate\_threshold) | Error rate threshold percentage for threshold-based alerting. | `number` | `10` | no |
-| <a name="input_github_app_id"></a> [github\_app\_id](#input\_github\_app\_id) | GitHub App that gives out GitHub tokens for Terraform. For instance, https://github.com/organizations/infrahouse/settings/apps/infrahouse-github-terraform | `any` | n/a | yes |
+| <a name="input_github_app_id"></a> [github\_app\_id](#input\_github\_app\_id) | GitHub App that gives out GitHub tokens for Terraform. For instance, https://github.com/organizations/infrahouse/settings/apps/infrahouse-github-terraform | `string` | n/a | yes |
 | <a name="input_github_credentials"></a> [github\_credentials](#input\_github\_credentials) | A secret and its type to auth in Github. | <pre>object(<br/>    {<br/>      type : string   # Can be either "token" or "pem"<br/>      secret : string # ARN where either is stored<br/>    }<br/>  )</pre> | n/a | yes |
-| <a name="input_github_org_name"></a> [github\_org\_name](#input\_github\_org\_name) | GitHub organization name. | `any` | n/a | yes |
+| <a name="input_github_org_name"></a> [github\_org\_name](#input\_github\_org\_name) | GitHub organization name. | `string` | n/a | yes |
 | <a name="input_lambda_timeout"></a> [lambda\_timeout](#input\_lambda\_timeout) | Time in seconds to let lambda run. | `number` | `900` | no |
-| <a name="input_python_version"></a> [python\_version](#input\_python\_version) | n/a | `string` | `"python3.12"` | no |
-| <a name="input_registration_token_secret_prefix"></a> [registration\_token\_secret\_prefix](#input\_registration\_token\_secret\_prefix) | Secret name prefix that will store a registration token | `any` | n/a | yes |
+| <a name="input_python_version"></a> [python\_version](#input\_python\_version) | Python version to run lambda on. Must one of https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html | `string` | `"python3.12"` | no |
+| <a name="input_registration_token_secret_prefix"></a> [registration\_token\_secret\_prefix](#input\_registration\_token\_secret\_prefix) | Secret name prefix that will store a registration token | `string` | n/a | yes |
 | <a name="input_security_group_ids"></a> [security\_group\_ids](#input\_security\_group\_ids) | List of security group ids where the lambda will be created. | `list(string)` | n/a | yes |
 | <a name="input_subnet_ids"></a> [subnet\_ids](#input\_subnet\_ids) | List of subnet ids where the actions runner instances will be created. | `list(string)` | n/a | yes |
-| <a name="input_tags"></a> [tags](#input\_tags) | n/a | `any` | n/a | yes |
+| <a name="input_tags"></a> [tags](#input\_tags) | A map of tags to assign to resources. | `map(string)` | `{}` | no |
 
 ## Outputs
 

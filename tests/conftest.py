@@ -1,7 +1,9 @@
+import json
+import logging
+from datetime import datetime, timedelta, timezone
 from time import sleep
 
 import pytest
-import logging
 
 
 from github import GithubIntegration
@@ -19,6 +21,11 @@ LOG = logging.getLogger(__name__)
 GITHUB_ORG_NAME = "infrahouse"
 TERRAFORM_ROOT_DIR = "test_data"
 GH_APP_ID = 1016363
+
+# Maximum LambdaInsights memory_utilization (percent) we tolerate in tests.
+# The prod alarm fires at 80%; the test margin is tighter so regressions are
+# caught in CI before they would page.
+LAMBDA_MEMORY_UTILIZATION_MAX_PERCENT = 70
 
 
 setup_logging(LOG, debug=True)
@@ -95,6 +102,106 @@ def ensure_runners(
     except TimeoutError:
         LOG.error("No registered runners after %d seconds.", timeout_time)
         assert False
+
+
+def assert_lambda_memory_within_limit(
+    cloudwatch_client,
+    function_name: str,
+    max_percent: float = LAMBDA_MEMORY_UTILIZATION_MAX_PERCENT,
+    wait_timeout: int = 900,
+) -> None:
+    """
+    Fail if a Lambda's observed memory utilization exceeds max_percent.
+
+    Polls the LambdaInsights memory_utilization metric for the given function
+    (same approach as terraform-aws-lambda-monitored's test). Lambda Insights
+    can lag up to ~15 minutes before a datapoint becomes queryable, so the poll
+    is wrapped in a wait_timeout loop.
+
+    :param cloudwatch_client: Boto3 CloudWatch client.
+    :param function_name: Lambda function name to inspect.
+    :param max_percent: Threshold in percent. The test fails if
+        max observed utilization exceeds this value.
+    :param wait_timeout: Seconds to wait for Lambda Insights to publish at
+        least one datapoint.
+    :raises AssertionError: When the observed utilization exceeds max_percent
+        or no datapoints arrive within wait_timeout.
+    """
+    utilization_pct = None
+    with timeout(wait_timeout):
+        while utilization_pct is None:
+            end_time = datetime.now(timezone.utc)
+            start_time = end_time - timedelta(minutes=15)
+            util_stats = cloudwatch_client.get_metric_statistics(
+                Namespace="LambdaInsights",
+                MetricName="memory_utilization",
+                Dimensions=[{"Name": "function_name", "Value": function_name}],
+                StartTime=start_time,
+                EndTime=end_time,
+                Period=60,
+                Statistics=["Maximum"],
+            )
+            util_points = util_stats.get("Datapoints", [])
+            if util_points:
+                utilization_pct = max(dp["Maximum"] for dp in util_points)
+                break
+            LOG.info(
+                "Waiting for LambdaInsights memory_utilization datapoints for %s...",
+                function_name,
+            )
+            sleep(30)
+
+    LOG.info(
+        "Lambda %s max memory utilization: %.2f%% (limit %s%%)",
+        function_name,
+        utilization_pct,
+        max_percent,
+    )
+    assert utilization_pct < max_percent, (
+        f"Lambda {function_name} used {utilization_pct:.2f}% of its allocated "
+        f"memory, which exceeds the test limit of {max_percent}%. "
+        f"Either reduce memory pressure in the handler or raise memory_size."
+    )
+
+
+def invoke_deregistration_sweep(
+    lambda_client, function_name: str, invocations: int = 3
+) -> None:
+    """
+    Invoke the runner_deregistration lambda in sweep mode.
+
+    The deregistration lambda runs on a 30-minute EventBridge schedule to clean
+    up stale runners (the path that OOM'd originally). A typical test run is
+    shorter than that schedule, so the test must invoke the lambda explicitly
+    to exercise the _clean_runners branch. The branch is selected by sending
+    an event whose `detail` has no `LifecycleHookName` key.
+
+    :param lambda_client: Boto3 Lambda client.
+    :param function_name: Name of the runner_deregistration lambda.
+    :param invocations: How many times to invoke the lambda.
+    :raises AssertionError: If any invocation returns a non-200 status or a
+        FunctionError.
+    """
+    sweep_event = {
+        "source": "aws.events",
+        "detail-type": "Scheduled Event",
+        "detail": {},
+    }
+    for i in range(invocations):
+        LOG.info("Invoking %s in sweep mode (%d/%d)", function_name, i + 1, invocations)
+        response = lambda_client.invoke(
+            FunctionName=function_name,
+            InvocationType="RequestResponse",
+            Payload=json.dumps(sweep_event),
+        )
+        assert response["StatusCode"] == 200, (
+            f"Lambda {function_name} sweep invocation returned status "
+            f"{response['StatusCode']}"
+        )
+        assert "FunctionError" not in response, (
+            f"Lambda {function_name} sweep invocation returned FunctionError: "
+            f"{response.get('FunctionError')}"
+        )
 
 
 def get_secret(secretsmanager_client, secret_name):
