@@ -97,7 +97,10 @@ The warm pool keeps instances in a hibernated state:
 6. bootstrap lifecycle hook fires
          │
          ▼
-7. Instance calls ih-aws to complete hook
+7. Bootstrap wrapper signals the hook:
+   - CONTINUE if every runcmd step (puppet, post_runcmd, ...) succeeded
+   - ABANDON via ERR trap on the first failure — the ASG then terminates the
+     instance instead of letting a broken runner join the fleet
          │
          ▼
 8. Instance enters InService state
