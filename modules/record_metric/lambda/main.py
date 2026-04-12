@@ -4,8 +4,6 @@ from os import environ
 
 from infrahouse_core.timeout import timeout
 
-from infrahouse_core.aws.asg import ASG
-
 from infrahouse_core.github import get_tmp_token, GitHubAuth, GitHubActions
 
 from infrahouse_core.aws import get_secret
