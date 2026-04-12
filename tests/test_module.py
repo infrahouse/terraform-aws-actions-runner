@@ -22,9 +22,7 @@ from tests.conftest import (
 )
 
 
-@pytest.mark.parametrize(
-    "aws_provider_version", ["~> 6.0"], ids=["aws-6"]
-)
+@pytest.mark.parametrize("aws_provider_version", ["~> 6.0"], ids=["aws-6"])
 @pytest.mark.parametrize(
     "secret_type, ubuntu_codename",
     [
