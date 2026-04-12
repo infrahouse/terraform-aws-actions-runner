@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.4.0] - 2026-04-12
+
+### Bug Fixes
+
+- Fail-closed bootstrap lifecycle hook via cloud-init wrapper
+- Surface lambda name outputs in test fixture, drop aws-5 tests
+- Black formatting and remove stale gitignore entry
+
+### Documentation
+
+- Record plan for lambda memory and fail-closed bootstrap work
+
+### Features
+
+- Monitor lambda memory utilization and raise memory to 256 MB
+
 ## [3.3.0] - 2026-03-19
 
 ### Bug Fixes
