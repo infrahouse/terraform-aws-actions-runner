@@ -14,8 +14,10 @@ from tests.conftest import (
     LOG,
     TERRAFORM_ROOT_DIR,
     GITHUB_ORG_NAME,
+    assert_lambda_memory_within_limit,
     ensure_runners,
     get_tmp_token,
+    invoke_deregistration_sweep,
     GH_APP_ID,
 )
 
@@ -129,6 +131,27 @@ def test_module(
                 * 900,  # 300 seconds to provision, 300 - warmup, 300 - cooldown old.
                 test_role_arn=test_role_arn,
             )
+
+            # runner_registration and record_metric fire naturally while the ASG
+            # comes up (launch lifecycle hook and 1-minute schedule, respectively).
+            # runner_deregistration's OOM-prone path is the _clean_runners sweep
+            # that normally runs on a 30-minute schedule, so the test has to
+            # invoke it explicitly to get coverage on the real failure mode.
+            lambda_client = boto3_session.client("lambda", region_name=aws_region)
+            cloudwatch_client = boto3_session.client(
+                "cloudwatch", region_name=aws_region
+            )
+            deregistration_lambda_name = tf_output["deregistration_lambda_name"][
+                "value"
+            ]
+            invoke_deregistration_sweep(lambda_client, deregistration_lambda_name)
+
+            for lambda_name in (
+                tf_output["registration_lambda_name"]["value"],
+                deregistration_lambda_name,
+                tf_output["record_metric_lambda_name"]["value"],
+            ):
+                assert_lambda_memory_within_limit(cloudwatch_client, lambda_name)
         finally:
             if not keep_after:
 

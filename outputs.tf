@@ -17,3 +17,18 @@ output "deregistration_log_group" {
   description = "CloudWatch log group name for the deregistration lambda"
   value       = module.deregistration.log_group_name
 }
+
+output "registration_lambda_name" {
+  description = "Name of the runner_registration lambda function."
+  value       = module.registration.lambda_name
+}
+
+output "deregistration_lambda_name" {
+  description = "Name of the runner_deregistration lambda function."
+  value       = module.deregistration.lambda_name
+}
+
+output "record_metric_lambda_name" {
+  description = "Name of the record_metric lambda function."
+  value       = module.record_metric.lambda_name
+}

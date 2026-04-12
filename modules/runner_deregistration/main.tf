@@ -90,19 +90,20 @@ resource "aws_iam_policy" "runner_deregistration_permissions" {
 # Lambda function with monitoring using terraform-aws-lambda-monitored module
 module "lambda_monitored" {
   source  = "registry.infrahouse.com/infrahouse/lambda-monitored/aws"
-  version = "1.0.4"
+  version = "1.1.0"
 
-  function_name                 = "${var.asg_name}_deregistration"
-  lambda_source_dir             = "${path.module}/lambda"
-  architecture                  = var.architecture
-  python_version                = var.python_version
-  timeout                       = var.lambda_timeout
-  memory_size                   = 128
-  cloudwatch_log_retention_days = var.cloudwatch_log_group_retention
-  alarm_emails                  = var.alarm_emails
-  alert_strategy                = "threshold"
-  error_rate_threshold          = var.error_rate_threshold
-  additional_iam_policy_arns    = [aws_iam_policy.runner_deregistration_permissions.arn]
+  function_name                        = "${var.asg_name}_deregistration"
+  lambda_source_dir                    = "${path.module}/lambda"
+  architecture                         = var.architecture
+  python_version                       = var.python_version
+  timeout                              = var.lambda_timeout
+  memory_size                          = 256
+  memory_utilization_threshold_percent = 80
+  cloudwatch_log_retention_days        = var.cloudwatch_log_group_retention
+  alarm_emails                         = var.alarm_emails
+  alert_strategy                       = "threshold"
+  error_rate_threshold                 = var.error_rate_threshold
+  additional_iam_policy_arns           = [aws_iam_policy.runner_deregistration_permissions.arn]
 
   # VPC Configuration
   lambda_subnet_ids         = var.subnet_ids
