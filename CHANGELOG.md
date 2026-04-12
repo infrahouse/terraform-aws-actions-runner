@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.4.2] - 2026-04-12
+
+### Bug Fixes
+
+- Bump infrahouse-core to ~= 1.0 to reduce Lambda memory pressure
+
 ## [3.4.1] - 2026-04-12
 
 ### Bug Fixes
