@@ -165,7 +165,7 @@ module "actions-runner" {
 | <a name="module_instance-profile"></a> [instance-profile](#module\_instance-profile) | registry.infrahouse.com/infrahouse/instance-profile/aws | 1.9.0 |
 | <a name="module_record_metric"></a> [record\_metric](#module\_record\_metric) | ./modules/record_metric | n/a |
 | <a name="module_registration"></a> [registration](#module\_registration) | ./modules/runner_registration | n/a |
-| <a name="module_userdata"></a> [userdata](#module\_userdata) | registry.infrahouse.com/infrahouse/cloud-init/aws | 2.2.3 |
+| <a name="module_userdata"></a> [userdata](#module\_userdata) | registry.infrahouse.com/infrahouse/cloud-init/aws | 2.3.0 |
 
 ## Resources
 
@@ -255,7 +255,10 @@ module "actions-runner" {
 | Name | Description |
 |------|-------------|
 | <a name="output_autoscaling_group_name"></a> [autoscaling\_group\_name](#output\_autoscaling\_group\_name) | Autoscaling group name. |
+| <a name="output_deregistration_lambda_name"></a> [deregistration\_lambda\_name](#output\_deregistration\_lambda\_name) | Name of the runner\_deregistration lambda function. |
 | <a name="output_deregistration_log_group"></a> [deregistration\_log\_group](#output\_deregistration\_log\_group) | CloudWatch log group name for the deregistration lambda |
+| <a name="output_record_metric_lambda_name"></a> [record\_metric\_lambda\_name](#output\_record\_metric\_lambda\_name) | Name of the record\_metric lambda function. |
+| <a name="output_registration_lambda_name"></a> [registration\_lambda\_name](#output\_registration\_lambda\_name) | Name of the runner\_registration lambda function. |
 | <a name="output_registration_token_secret_prefix"></a> [registration\_token\_secret\_prefix](#output\_registration\_token\_secret\_prefix) | The prefix used for storing GitHub Actions runner registration token secrets in AWS Secrets Manager |
 | <a name="output_runner_role_arn"></a> [runner\_role\_arn](#output\_runner\_role\_arn) | An actions runner EC2 instance role ARN. |
 <!-- END_TF_DOCS -->

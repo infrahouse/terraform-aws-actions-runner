@@ -26,7 +26,7 @@ module "instance-profile" {
 
 module "userdata" {
   source  = "registry.infrahouse.com/infrahouse/cloud-init/aws"
-  version = "2.2.3"
+  version = "2.3.0"
 
   environment              = var.environment
   role                     = "gha_runner"
@@ -60,12 +60,11 @@ module "userdata" {
     registration_token_secret_prefix : local.registration_token_secret_prefix
     bootstrap_hookname : local.bootstrap_hookname
   }
-  post_runcmd = concat(
-    var.post_runcmd,
-    [
-      "ih-aws --verbose autoscaling complete ${local.bootstrap_hookname}"
-    ]
-  )
+  # Signal the bootstrap lifecycle hook from the cloud-init wrapper so that any failure in the
+  # runcmd chain (puppet, package installs, consumer post_runcmd) results in ABANDON rather than
+  # a false CONTINUE. See https://github.com/infrahouse/terraform-aws-actions-runner/issues/86
+  lifecycle_hook_name = local.bootstrap_hookname
+  post_runcmd         = var.post_runcmd
 }
 
 
