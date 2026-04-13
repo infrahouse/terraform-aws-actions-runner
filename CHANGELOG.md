@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.4.3] - 2026-04-13
+
+### Bug Fixes
+
+- Raise Lambda memory to 512 MB and hoist boto3 clients to module scope
+
 ## [3.4.2] - 2026-04-12
 
 ### Bug Fixes
