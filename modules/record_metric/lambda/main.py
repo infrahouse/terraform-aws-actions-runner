@@ -13,6 +13,12 @@ import boto3
 LOG = logging.getLogger()
 LOG.setLevel(level=logging.INFO)
 
+# Module-scope boto3 clients: created once at cold start so the ~8 MB
+# botocore endpoints.json parse runs during INIT (uncapped CPU) instead of
+# inside the handler's SIGALRM-bounded timeout window.
+_secretsmanager = boto3.client("secretsmanager")
+_cloudwatch = boto3.client("cloudwatch")
+
 
 def lambda_handler(event, context):
     """
@@ -43,9 +49,7 @@ def lambda_handler(event, context):
 
     LOG.info(f"{status_counts['idle'] = }, {status_counts['busy'] = }")
 
-    # Send the custom metric
-    cloudwatch = boto3.client("cloudwatch")
-    cloudwatch.put_metric_data(
+    _cloudwatch.put_metric_data(
         Namespace="GitHubRunners",
         MetricData=[
             {
@@ -71,7 +75,7 @@ def lambda_handler(event, context):
 def _get_github_token(org):
     with timeout(5):
         return (
-            get_secret(boto3.client("secretsmanager"), environ["GITHUB_SECRET"])
+            get_secret(_secretsmanager, environ["GITHUB_SECRET"])
             if environ["GITHUB_SECRET_TYPE"] == "token"
             else get_tmp_token(int(environ["GH_APP_ID"]), environ["GITHUB_SECRET"], org)
         )

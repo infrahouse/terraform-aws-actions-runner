@@ -13,6 +13,13 @@ from github import GithubException
 LOG = logging.getLogger()
 LOG.setLevel(level=logging.INFO)
 
+# Module-scope boto3 session: created once at cold start so the ~8 MB
+# botocore endpoints.json parse runs during INIT (uncapped CPU) instead of
+# inside the handler. Passed explicitly to every ASGInstance / ASG so all
+# AWS clients share a single credential chain and endpoint cache.
+_session = boto3.Session()
+_secretsmanager = _session.client("secretsmanager")
+
 HOOK_REGISTRATION = "registration"
 HOOK_BOOTSTRAP = "bootstrap"
 
@@ -35,7 +42,9 @@ def lambda_handler(event, context):
     LOG.info(f"{event = }")
     hook_name = event["detail"]["LifecycleHookName"]
     LOG.info(f"{hook_name = }")
-    asg_instance = ASGInstance(instance_id=event["detail"]["EC2InstanceId"])
+    asg_instance = ASGInstance(
+        instance_id=event["detail"]["EC2InstanceId"], session=_session
+    )
     github = GitHubAuth(
         _get_github_token(environ["GITHUB_ORG_NAME"]), environ["GITHUB_ORG_NAME"]
     )
@@ -70,7 +79,7 @@ def lambda_handler(event, context):
 def _handle_registration_hook(
     asg_instance: ASGInstance, hook_name: str, gha: GitHubActions
 ):
-    asg = ASG(asg_name=asg_instance.asg_name)
+    asg = ASG(asg_name=asg_instance.asg_name, session=_session)
     instance_id = asg_instance.instance_id
     try:
         registration_token_secret_prefix = environ["REGISTRATION_TOKEN_SECRET_PREFIX"]
@@ -111,7 +120,7 @@ def _handle_bootstrap_hook(
     asg_instance: ASGInstance, hook_name: str, gha: GitHubActions, wait_timeout=900
 ):
     instance_id = asg_instance.instance_id
-    asg = ASG(asg_name=asg_instance.asg_name)
+    asg = ASG(asg_name=asg_instance.asg_name, session=_session)
     label = f"instance_id:{instance_id}"
     LOG.info("Looking for runner with label %s.", label)
     runner = gha.find_runner_by_label(label)
@@ -141,7 +150,7 @@ def _handle_bootstrap_hook(
 
 def _get_github_token(org):
     return (
-        get_secret(boto3.client("secretsmanager"), environ["GITHUB_SECRET"])
+        get_secret(_secretsmanager, environ["GITHUB_SECRET"])
         if environ["GITHUB_SECRET_TYPE"] == "token"
         else get_tmp_token(int(environ["GH_APP_ID"]), environ["GITHUB_SECRET"], org)
     )

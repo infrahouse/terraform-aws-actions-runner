@@ -1,5 +1,5 @@
 pytest-infrahouse ~= 0.24, >= 0.24.1
-infrahouse-core ~= 0.24, >= 0.17.2
+infrahouse-core ~= 1.0
 
 # Documentation dependencies
 diagrams ~= 0.25

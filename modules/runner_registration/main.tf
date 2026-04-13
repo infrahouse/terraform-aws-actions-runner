@@ -104,7 +104,7 @@ module "lambda_monitored" {
   architecture                         = var.architecture
   python_version                       = var.python_version
   timeout                              = var.lambda_timeout
-  memory_size                          = 256
+  memory_size                          = 512
   memory_utilization_threshold_percent = 80
   cloudwatch_log_retention_days        = var.cloudwatch_log_group_retention
   alarm_emails                         = var.alarm_emails

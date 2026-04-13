@@ -11,6 +11,13 @@ from infrahouse_core.aws.asg import ASG
 LOG = logging.getLogger()
 LOG.setLevel(level=logging.INFO)
 
+# Module-scope boto3 session: created once at cold start so the ~8 MB
+# botocore endpoints.json parse runs during INIT (uncapped CPU) instead of
+# inside the handler. Passed explicitly to every ASGInstance / ASG so all
+# AWS clients share a single credential chain and endpoint cache.
+_session = boto3.Session()
+_secretsmanager = _session.client("secretsmanager")
+
 HOOK_DEREGISTRATION = "deregistration"
 
 
@@ -37,8 +44,8 @@ def lambda_handler(event, context):
 
 
 def _handle_deregistration_hook(hook_name, instance_id):
-    asg_instance = ASGInstance(instance_id=instance_id)
-    asg = ASG(asg_name=asg_instance.asg_name)
+    asg_instance = ASGInstance(instance_id=instance_id, session=_session)
+    asg = ASG(asg_name=asg_instance.asg_name, session=_session)
     result = "ABANDON"
     try:
         if asg_instance.lifecycle_state == "Warmed:Terminating:Wait":
@@ -69,7 +76,7 @@ def _handle_deregistration_hook(hook_name, instance_id):
 
 def _get_github_token(org):
     return (
-        get_secret(boto3.client("secretsmanager"), environ["GITHUB_SECRET"])
+        get_secret(_secretsmanager, environ["GITHUB_SECRET"])
         if environ["GITHUB_SECRET_TYPE"] == "token"
         else get_tmp_token(int(environ["GH_APP_ID"]), environ["GITHUB_SECRET"], org)
     )
@@ -87,7 +94,10 @@ def _clean_runners(gha: GitHubActions, installation_id: str):
     for runner in gha.find_runners_by_label(f"installation_id:{installation_id}"):
         LOG.info("Found runner %s", runner.name)
         try:
-            if ASGInstance(instance_id=runner.instance_id).state == "terminated":
+            if (
+                ASGInstance(instance_id=runner.instance_id, session=_session).state
+                == "terminated"
+            ):
                 LOG.info(
                     "Instance %s is terminated. Will deregister the runner %s.",
                     runner.instance_id,

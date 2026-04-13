@@ -65,7 +65,7 @@ def ensure_runners(
         with timeout(timeout_time):
             while True:
                 try:
-                    runners = gha.find_runners_by_label("awesome")
+                    runners = list(gha.find_runners_by_label("awesome"))
                     LOG.info("Found %d runners", len(runners))
                     assert len(runners) > 0
 
