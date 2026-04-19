@@ -17,6 +17,7 @@ LOG.setLevel(level=logging.INFO)
 _session = boto3.Session()
 _secretsmanager = _session.client("secretsmanager")
 _ssm = _session.client("ssm")
+_autoscaling = _session.client("autoscaling")
 
 HOOK_DEREGISTRATION = "deregistration"
 
@@ -56,19 +57,22 @@ def _handle_deregistration_hook(instance_id):
     - ``Warmed:Terminating:Wait``: warm-pool trim. No runner service is
       running on a hibernated warm-pool instance, so there's nothing to
       stop. Complete the lifecycle hook immediately.
-    - Regular ``Terminating:Wait`` (and any other state): dispatch an SSM
-      ``systemctl stop actions-runner.service`` command and exit. We do
-      NOT wait for SSM to deliver the command, and we do NOT complete
+    - ``Terminating:Wait``: dispatch an SSM
+      ``systemctl stop actions-runner.service`` command and return. We
+      do NOT wait for SSM to deliver the command, and we do NOT complete
       the lifecycle action — the on-host ``ExecStopPost`` script owns
       that once the runner exits gracefully (see puppet-code
       ``gha-on-runner-exit.sh``). The on-host heartbeater keeps the
       hook alive for long-running jobs.
+
+    Any other lifecycle state is unexpected for a deregistration event;
+    the SSM stop still fires but is effectively a no-op.
     """
     asg_instance = ASGInstance(instance_id=instance_id, session=_session)
     asg_name = asg_instance.asg_name
 
     if asg_instance.lifecycle_state == "Warmed:Terminating:Wait":
-        _session.client("autoscaling").complete_lifecycle_action(
+        _autoscaling.complete_lifecycle_action(
             LifecycleHookName=HOOK_DEREGISTRATION,
             AutoScalingGroupName=asg_name,
             InstanceId=instance_id,
@@ -80,11 +84,20 @@ def _handle_deregistration_hook(instance_id):
         )
         return
 
-    _ssm.send_command(
-        InstanceIds=[instance_id],
-        DocumentName="AWS-RunShellScript",
-        Parameters={"commands": ["/usr/bin/systemctl stop actions-runner.service"]},
-    )
+    try:
+        _ssm.send_command(
+            InstanceIds=[instance_id],
+            DocumentName="AWS-RunShellScript",
+            Parameters={"commands": ["/usr/bin/systemctl stop actions-runner.service"]},
+        )
+    except ClientError as err:
+        LOG.error(
+            "Failed to send SSM stop to %s: %s. "
+            "Lifecycle hook will time out after heartbeat_timeout and ABANDON.",
+            instance_id,
+            err,
+        )
+        raise
     LOG.info(
         "Sent SSM stop for actions-runner.service on %s. "
         "ExecStopPost will complete the lifecycle hook.",
