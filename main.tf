@@ -59,6 +59,7 @@ module "userdata" {
     )
     registration_token_secret_prefix : local.registration_token_secret_prefix
     bootstrap_hookname : local.bootstrap_hookname
+    deregistration_hookname : local.deregistration_hookname
   }
   # Signal the bootstrap lifecycle hook from the cloud-init wrapper so that any failure in the
   # runcmd chain (puppet, package installs, consumer post_runcmd) results in ABANDON rather than
@@ -252,6 +253,8 @@ resource "aws_autoscaling_lifecycle_hook" "terminating" {
   name                   = local.deregistration_hookname
   autoscaling_group_name = aws_autoscaling_group.actions-runner.name
   lifecycle_transition   = "autoscaling:EC2_INSTANCE_TERMINATING"
-  heartbeat_timeout      = 3600
-  default_result         = "ABANDON"
+  # Short per-call timeout; the on-host heartbeater extends it every 10 min
+  # while a job is still running. See .claude/plans/warm-pool-protection-race.md.
+  heartbeat_timeout = 1800
+  default_result    = "ABANDON"
 }

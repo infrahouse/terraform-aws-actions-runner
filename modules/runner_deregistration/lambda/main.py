@@ -6,17 +6,17 @@ from infrahouse_core.github import GitHubActions, get_tmp_token, GitHubAuth
 from infrahouse_core.aws import get_secret
 
 import boto3
-from infrahouse_core.aws.asg import ASG
 
 LOG = logging.getLogger()
 LOG.setLevel(level=logging.INFO)
 
 # Module-scope boto3 session: created once at cold start so the ~8 MB
 # botocore endpoints.json parse runs during INIT (uncapped CPU) instead of
-# inside the handler. Passed explicitly to every ASGInstance / ASG so all
+# inside the handler. Passed explicitly to every ASGInstance so all
 # AWS clients share a single credential chain and endpoint cache.
 _session = boto3.Session()
 _secretsmanager = _session.client("secretsmanager")
+_ssm = _session.client("ssm")
 
 HOOK_DEREGISTRATION = "deregistration"
 
@@ -30,48 +30,66 @@ def lambda_handler(event, context):
 
     if event["detail"].get("LifecycleHookName") == HOOK_DEREGISTRATION:
         """
-        This even is received when an instance is about to be terminated or when it's re-entering the warm pool.
+        Received when an instance is entering Terminating:Wait (either a
+        regular scale-in / ASG termination, or a warm-pool trim).
         """
         instance_id = event["detail"]["EC2InstanceId"]
+        # Safety-net cleanup of the registration token secret. Puppet deletes
+        # it right after register (fast path); this call is idempotent and
+        # covers the case where Puppet never converged (crash during bootstrap,
+        # instance killed before agent run, etc).
         gha.ensure_registration_token(
             f"{environ['REGISTRATION_TOKEN_SECRET_PREFIX']}-{instance_id}",
             present=False,
         )
-        _handle_deregistration_hook(HOOK_DEREGISTRATION, instance_id)
+        _handle_deregistration_hook(instance_id)
     else:
         # Fall back to sweeping unused runners if no lifecycle hook is present
         _clean_runners(gha, environ["INSTALLATION_ID"])
 
 
-def _handle_deregistration_hook(hook_name, instance_id):
+def _handle_deregistration_hook(instance_id):
+    """Fire-and-forget scale-in helper.
+
+    Two paths:
+
+    - ``Warmed:Terminating:Wait``: warm-pool trim. No runner service is
+      running on a hibernated warm-pool instance, so there's nothing to
+      stop. Complete the lifecycle hook immediately.
+    - Regular ``Terminating:Wait`` (and any other state): dispatch an SSM
+      ``systemctl stop actions-runner.service`` command and exit. We do
+      NOT wait for SSM to deliver the command, and we do NOT complete
+      the lifecycle action — the on-host ``ExecStopPost`` script owns
+      that once the runner exits gracefully (see puppet-code
+      ``gha-on-runner-exit.sh``). The on-host heartbeater keeps the
+      hook alive for long-running jobs.
+    """
     asg_instance = ASGInstance(instance_id=instance_id, session=_session)
-    asg = ASG(asg_name=asg_instance.asg_name, session=_session)
-    result = "ABANDON"
-    try:
-        if asg_instance.lifecycle_state == "Warmed:Terminating:Wait":
-            # If the instance is terminating don't stop actions-runner, just complete the lifecycle
-            result = "CONTINUE"
-            return
+    asg_name = asg_instance.asg_name
 
-        exit_code = asg_instance.execute_command(
-            "/usr/bin/systemctl stop actions-runner.service",
-        )[0]
-        result = "CONTINUE" if exit_code == 0 else "ABANDON"
-
-    except TimeoutError as err:
-        LOG.error(err)
-        result = "ABANDON"
-
-    finally:
-        asg.complete_lifecycle_action(
-            hook_name=HOOK_DEREGISTRATION, result=result, instance_id=instance_id
+    if asg_instance.lifecycle_state == "Warmed:Terminating:Wait":
+        _session.client("autoscaling").complete_lifecycle_action(
+            LifecycleHookName=HOOK_DEREGISTRATION,
+            AutoScalingGroupName=asg_name,
+            InstanceId=instance_id,
+            LifecycleActionResult="CONTINUE",
         )
         LOG.info(
-            "Lifecycle hook %s for %s is complete with result %s.",
-            hook_name,
+            "Warm-pool trim for %s — completed lifecycle hook immediately.",
             instance_id,
-            result,
         )
+        return
+
+    _ssm.send_command(
+        InstanceIds=[instance_id],
+        DocumentName="AWS-RunShellScript",
+        Parameters={"commands": ["/usr/bin/systemctl stop actions-runner.service"]},
+    )
+    LOG.info(
+        "Sent SSM stop for actions-runner.service on %s. "
+        "ExecStopPost will complete the lifecycle hook.",
+        instance_id,
+    )
 
 
 def _get_github_token(org):
