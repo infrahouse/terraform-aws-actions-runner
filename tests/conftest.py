@@ -28,7 +28,8 @@ GH_APP_ID = 1016363
 LAMBDA_MEMORY_UTILIZATION_MAX_PERCENT = 70
 
 
-setup_logging(LOG, debug=True)
+setup_logging(LOG, debug=True, debug_botocore=False)
+setup_logging(logging.getLogger("pytest_infrahouse"), debug=True, debug_botocore=False)
 
 
 def pytest_addoption(parser):

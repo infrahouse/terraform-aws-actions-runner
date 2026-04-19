@@ -16,6 +16,7 @@ data "aws_iam_policy_document" "required_permissions" {
   statement {
     actions = [
       "autoscaling:CompleteLifecycleAction",
+      "autoscaling:RecordLifecycleActionHeartbeat",
       "autoscaling:SetInstanceHealth",
       "autoscaling:SetInstanceProtection",
     ]
@@ -38,6 +39,7 @@ data "aws_iam_policy_document" "required_permissions" {
   statement {
     actions = [
       "secretsmanager:GetSecretValue",
+      "secretsmanager:DeleteSecret",
     ]
     resources = [
       join(
