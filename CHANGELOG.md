@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.5.0] - 2026-04-19
+
+### Bug Fixes
+
+- Survive scale-in race in gha_prerun without failing jobs
+- Address PR #92 review findings
+
+### Documentation
+
+- Add design plan for #81 fix to .claude/plans/
+
 ## [3.4.3] - 2026-04-13
 
 ### Bug Fixes
