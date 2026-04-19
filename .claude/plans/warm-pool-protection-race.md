@@ -13,7 +13,7 @@ The prerun hook's `SetInstanceProtection(protect=true)` fails because the
 instance is in `Terminating:Wait` at the moment the hook fires.
 
 CloudTrail evidence (`i-0f3066deda420ab46`, 2026-01-30 10:31:07Z, account
-611021602836, us-west-1):
+61********36, us-west-1):
 
 1. 10:31:04 — ASG scale-in → instance enters `Terminating:Wait`, deregistration
    Lambda fires.
