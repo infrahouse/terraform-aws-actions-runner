@@ -1,5 +1,4 @@
 resource "aws_cloudwatch_metric_alarm" "cpu_utilization_alarm" {
-  count               = var.sns_topic_alarm_arn != null ? 1 : 0
   alarm_name          = format("CPU Alarm on ASG %s", aws_autoscaling_group.actions-runner.name)
   comparison_operator = "GreaterThanThreshold"
   metric_name         = "CPUUtilization"
@@ -8,7 +7,7 @@ resource "aws_cloudwatch_metric_alarm" "cpu_utilization_alarm" {
   period              = 60
   threshold           = 90
   namespace           = "AWS/EC2"
-  alarm_actions       = [var.sns_topic_alarm_arn]
+  alarm_actions       = local.all_alarm_topic_arns
   alarm_description   = format("%s alarm - CPU exceeds 90 percent", aws_autoscaling_group.actions-runner.name)
   dimensions = {
     AutoScalingGroupName = aws_autoscaling_group.actions-runner.name

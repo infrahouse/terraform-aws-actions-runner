@@ -32,3 +32,8 @@ output "record_metric_lambda_name" {
   description = "Name of the record_metric lambda function."
   value       = module.record_metric.lambda_name
 }
+
+output "alarm_topic_arn" {
+  description = "ARN of the SNS topic this module creates for alarm notifications. alarm_emails are subscribed to this topic; any ARNs passed in alarm_topic_arns receive the same alarms in addition to this one."
+  value       = aws_sns_topic.alarms.arn
+}

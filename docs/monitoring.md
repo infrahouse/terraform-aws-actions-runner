@@ -42,11 +42,13 @@ module "actions-runner" {
 
 ### Custom Metrics
 
-The `record_metric` Lambda publishes:
+The `record_metric` Lambda publishes, under the `GitHubRunners` namespace
+with an `asg_name` dimension:
 
-| Metric | Namespace | Description |
-|--------|-----------|-------------|
-| `IdleRunnersCount` | `InfraHouse/ActionsRunner` | Number of idle runners |
+| Metric | Description |
+|--------|-------------|
+| `BusyRunners` | Number of runners currently executing a job |
+| `IdleRunners` | Number of registered runners waiting for work |
 
 ### AWS Metrics
 
@@ -66,7 +68,7 @@ Created automatically:
 |-------|-----------|--------|
 | `idle_runners_low` | Idle < target | Scale out |
 | `idle_runners_high` | Idle > target | Scale in |
-| `cpu_utilization` | CPU > threshold | Alert (optional) |
+| `cpu_utilization` | CPU > 90% | Alert |
 
 ### Lambda Alarms
 
@@ -134,6 +136,11 @@ The module's monitoring setup satisfies Vanta's AWS Lambda checks:
 
 ## SNS Integration
 
+The module always creates its own SNS topic for alarm notifications and
+subscribes every address in `alarm_emails` to it. This is the required,
+load-bearing notification path — every operator gets at least one working
+alert channel.
+
 ### Email Alerts
 
 ```hcl
@@ -145,23 +152,45 @@ module "actions-runner" {
 }
 ```
 
-### Custom SNS Topics
+!!! warning "Email Confirmation Required"
+    AWS sends each subscriber a confirmation email. Recipients **must click
+    the confirmation link** before they will receive alerts.
 
-For integration with PagerDuty, Slack, or other systems, the module outputs the SNS topic ARN:
+### Fan Out to PagerDuty / Slack / Shared Topics
+
+For additional routing, pass one or more existing SNS topic ARNs via
+`alarm_topic_arns`. Every alarm this module creates will send to the
+module-owned topic **and** to each ARN in the list:
 
 ```hcl
-# After deployment, get the topic ARN
-output "alarm_topic_arn" {
-  value = module.actions-runner.alarm_topic_arn
-}
-
-# Subscribe your custom endpoint
-resource "aws_sns_topic_subscription" "pagerduty" {
-  topic_arn = module.actions-runner.alarm_topic_arn
-  protocol  = "https"
-  endpoint  = "https://events.pagerduty.com/integration/xxx/enqueue"
+module "actions-runner" {
+  alarm_emails     = ["oncall@example.com"]
+  alarm_topic_arns = [
+    aws_sns_topic.pagerduty_bridge.arn,
+    aws_sns_topic.shared_org_alerts.arn,
+  ]
 }
 ```
+
+### Subscribing Additional Endpoints to the Module-Owned Topic
+
+The module's topic ARN is exposed as an output:
+
+```hcl
+resource "aws_sns_topic_subscription" "slack" {
+  topic_arn = module.actions-runner.alarm_topic_arn
+  protocol  = "https"
+  endpoint  = "https://hooks.slack.com/services/..."
+}
+```
+
+### Host-Level Alarms (Disk, Memory)
+
+Not shipped yet. The runner AMI does not run the CloudWatch agent today, so
+disk and memory metrics are not available. Tracked in
+[infrahouse/puppet-code#270](https://github.com/infrahouse/puppet-code/issues/270);
+once the agent is wired into `role::github_runner`, a follow-up release of
+this module will add disk and memory alarms unconditionally.
 
 ## Debugging
 
