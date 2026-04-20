@@ -142,7 +142,7 @@ extra_repos = {
 |----------|------|---------|-------------|
 | `alarm_emails` | list(string) | required | Email addresses for alerts |
 | `error_rate_threshold` | number | `10` | Error rate % threshold |
-| `sns_topic_alarm_arn` | string | `null` | Existing SNS topic for EC2 alarms |
+| `alarm_topic_arns` | list(string) | `[]` | Additional SNS topic ARNs to fan alarms out to (PagerDuty, Slack, shared org topics). The module always creates its own topic for `alarm_emails`; this list is additive. |
 
 ## Tags
 

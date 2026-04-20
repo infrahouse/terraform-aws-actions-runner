@@ -34,4 +34,9 @@ locals {
   registration_hookname            = "registration"
   deregistration_hookname          = "deregistration"
   bootstrap_hookname               = "bootstrap"
+
+  all_alarm_topic_arns = concat(
+    [aws_sns_topic.alarms.arn],
+    var.alarm_topic_arns,
+  )
 }

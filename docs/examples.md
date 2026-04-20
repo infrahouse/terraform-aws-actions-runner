@@ -140,9 +140,32 @@ module "runners_linux_large" {
 }
 ```
 
+## Fan Out Alarms to PagerDuty / Slack
+
+`alarm_emails` is required and drives the module-owned SNS topic. To route the same alarms to additional destinations, pass existing SNS topic ARNs via `alarm_topic_arns` — every alarm fires to both channels.
+
+```hcl
+module "actions_runner" {
+  source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
+  version = "~> 4.0"
+
+  environment             = "production"
+  github_org_name         = "your-org"
+  subnet_ids              = module.service_network.subnet_private_ids
+  github_token_secret_arn = aws_secretsmanager_secret.github_token.arn
+
+  alarm_emails = ["oncall@example.com"]
+  alarm_topic_arns = [
+    aws_sns_topic.pagerduty_bridge.arn,
+    aws_sns_topic.shared_org_alerts.arn,
+  ]
+}
+```
+
 ## See Also
 
 - [Getting Started](getting-started.md)
 - [Configuration](configuration.md) — full variable reference
 - [Scaling](scaling.md) — warm pool and autoscaling tuning
+- [Monitoring](monitoring.md) — alarm contract and SNS fan-out
 - [Troubleshooting](troubleshooting.md)

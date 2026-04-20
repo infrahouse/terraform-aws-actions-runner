@@ -31,6 +31,11 @@ Self-hosted runners offer several advantages over GitHub-hosted runners:
 
 ## What's New
 
+- **v4.0.0 — Unified alarm notification channel (#93):**
+    - The module now **always** creates its own SNS topic for alarms and subscribes every address in `alarm_emails`. Previously, EC2 CPU alarms were silently disabled when callers set only `alarm_emails` and not the (optional, defaulted-null) `sns_topic_alarm_arn`, resulting in EC2 instances reported as unmonitored.
+    - **Breaking:** `sns_topic_alarm_arn` (singular, optional) is replaced by `alarm_topic_arns` (list, default `[]`). Callers upgrading who previously set `sns_topic_alarm_arn = "<arn>"` should rename to `alarm_topic_arns = ["<arn>"]`. After the rename, the module creates its own topic **and** fans out to the provided ARNs — strictly more coverage.
+    - Every alarm in the module (CPU and all future alarms) now fires to the module-owned topic plus any ARNs in `alarm_topic_arns`.
+    - New output `alarm_topic_arn` exposes the module-owned topic for additional subscriptions.
 - **Migrated runner_deregistration lambda to terraform-aws-lambda-monitored module (v1.0.4):**
     - Automated dependency packaging for Lambda functions (no more custom package.sh scripts)
     - Built-in error monitoring and alerting via SNS
@@ -55,6 +60,37 @@ Self-hosted runners offer several advantages over GitHub-hosted runners:
     - Orphaned runners are now automatically deregistered.
 
 ## Migration Guide
+
+### Upgrading to v4.0.0 (Unified Alarm Topic)
+
+The v4.0.0 release renames `sns_topic_alarm_arn` (singular, optional) to
+`alarm_topic_arns` (list, optional). The module also starts creating its own
+SNS topic unconditionally and subscribing `alarm_emails` to it.
+
+#### Who Needs To Change Anything
+
+Only callers who previously set `sns_topic_alarm_arn`. If you only set
+`alarm_emails`, no caller-side change is needed — the upgrade is purely
+additive (you stop being silently unmonitored).
+
+#### Rename
+
+```hcl
+# Before
+module "actions-runner" {
+  # ...
+  sns_topic_alarm_arn = "arn:aws:sns:us-east-1:123456789012:shared-alarms"
+}
+
+# After
+module "actions-runner" {
+  # ...
+  alarm_topic_arns = ["arn:aws:sns:us-east-1:123456789012:shared-alarms"]
+}
+```
+
+After the rename, alarms fire to **both** the module-owned topic (driven by
+`alarm_emails`) and every ARN in `alarm_topic_arns`.
 
 ### Upgrading to v3.1.0+ (runner_deregistration Migration)
 
@@ -182,6 +218,8 @@ module "actions-runner" {
 | [aws_key_pair.actions-runner](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/key_pair) | resource |
 | [aws_launch_template.actions-runner](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/launch_template) | resource |
 | [aws_security_group.actions-runner](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group) | resource |
+| [aws_sns_topic.alarms](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/sns_topic) | resource |
+| [aws_sns_topic_subscription.alarm_emails](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/sns_topic_subscription) | resource |
 | [aws_vpc_security_group_egress_rule.default](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/vpc_security_group_egress_rule) | resource |
 | [aws_vpc_security_group_ingress_rule.icmp](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/vpc_security_group_ingress_rule) | resource |
 | [aws_vpc_security_group_ingress_rule.ssh](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/vpc_security_group_ingress_rule) | resource |
@@ -206,6 +244,7 @@ module "actions-runner" {
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_alarm_emails"></a> [alarm\_emails](#input\_alarm\_emails) | List of email addresses to receive alarm notifications for Lambda function errors. At least one email is required for Lambda error monitoring. | `list(string)` | n/a | yes |
+| <a name="input_alarm_topic_arns"></a> [alarm\_topic\_arns](#input\_alarm\_topic\_arns) | List of existing SNS topic ARNs to fan alarm notifications out to (e.g. PagerDuty, Slack, shared org topics). The module always creates its own topic for alarm\_emails; this list is additive. | `list(string)` | `[]` | no |
 | <a name="input_allowed_drain_time"></a> [allowed\_drain\_time](#input\_allowed\_drain\_time) | How many seconds to give a running job to finish after the instance fails health checks. Maximum allowed value is 900 seconds. | `number` | `900` | no |
 | <a name="input_ami_id"></a> [ami\_id](#input\_ami\_id) | AMI id for EC2 instances. By default, latest Ubuntu var.ubuntu\_codename. | `string` | `null` | no |
 | <a name="input_architecture"></a> [architecture](#input\_architecture) | The CPU architecture for the Lambda function; valid values are `x86_64` or `arm64`. | `string` | `"x86_64"` | no |
@@ -243,7 +282,6 @@ module "actions-runner" {
 | <a name="input_python_version"></a> [python\_version](#input\_python\_version) | Python version to run lambda on. Must be one of https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html | `string` | `"python3.12"` | no |
 | <a name="input_role_name"></a> [role\_name](#input\_role\_name) | IAM role name that will be created and used by EC2 instances | `string` | `"actions-runner"` | no |
 | <a name="input_root_volume_size"></a> [root\_volume\_size](#input\_root\_volume\_size) | Root volume size in EC2 instance in Gigabytes | `number` | `30` | no |
-| <a name="input_sns_topic_alarm_arn"></a> [sns\_topic\_alarm\_arn](#input\_sns\_topic\_alarm\_arn) | ARN of SNS topic for Cloudwatch alarms on base EC2 instance. | `string` | `null` | no |
 | <a name="input_subnet_ids"></a> [subnet\_ids](#input\_subnet\_ids) | List of subnet ids where the actions runner instances will be created. | `list(string)` | n/a | yes |
 | <a name="input_tags"></a> [tags](#input\_tags) | A map of tags to add to resources. | `map(string)` | `{}` | no |
 | <a name="input_ubuntu_codename"></a> [ubuntu\_codename](#input\_ubuntu\_codename) | Ubuntu version to use for the actions runner. | `string` | `"noble"` | no |
@@ -254,6 +292,7 @@ module "actions-runner" {
 
 | Name | Description |
 |------|-------------|
+| <a name="output_alarm_topic_arn"></a> [alarm\_topic\_arn](#output\_alarm\_topic\_arn) | ARN of the SNS topic this module creates for alarm notifications. alarm\_emails are subscribed to this topic; any ARNs passed in alarm\_topic\_arns receive the same alarms in addition to this one. |
 | <a name="output_autoscaling_group_name"></a> [autoscaling\_group\_name](#output\_autoscaling\_group\_name) | Autoscaling group name. |
 | <a name="output_deregistration_lambda_name"></a> [deregistration\_lambda\_name](#output\_deregistration\_lambda\_name) | Name of the runner\_deregistration lambda function. |
 | <a name="output_deregistration_log_group"></a> [deregistration\_log\_group](#output\_deregistration\_log\_group) | CloudWatch log group name for the deregistration lambda |

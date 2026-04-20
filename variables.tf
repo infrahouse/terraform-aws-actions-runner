@@ -253,10 +253,10 @@ variable "root_volume_size" {
   default     = 30
 }
 
-variable "sns_topic_alarm_arn" {
-  description = "ARN of SNS topic for Cloudwatch alarms on base EC2 instance."
-  type        = string
-  default     = null
+variable "alarm_topic_arns" {
+  description = "List of existing SNS topic ARNs to fan alarm notifications out to (e.g. PagerDuty, Slack, shared org topics). The module always creates its own topic for alarm_emails; this list is additive."
+  type        = list(string)
+  default     = []
 }
 
 variable "subnet_ids" {
