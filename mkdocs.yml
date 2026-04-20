@@ -36,6 +36,15 @@ theme:
 
 nav:
   - Home: index.md
+  - Getting Started: getting-started.md
+  - Architecture: architecture.md
+  - Configuration: configuration.md
+  - Authentication: authentication.md
+  - Scaling: scaling.md
+  - Monitoring: monitoring.md
+  - Examples: examples.md
+  - Troubleshooting: troubleshooting.md
+  - Comparison: comparison.md
 
 markdown_extensions:
   - pymdownx.highlight:
