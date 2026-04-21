@@ -37,3 +37,13 @@ output "alarm_topic_arn" {
   description = "ARN of the SNS topic this module creates for alarm notifications. alarm_emails are subscribed to this topic; any ARNs passed in alarm_topic_arns receive the same alarms in addition to this one."
   value       = aws_sns_topic.alarms.arn
 }
+
+output "dashboard_name" {
+  description = "Name of the CloudWatch dashboard the module creates for this runner pool."
+  value       = aws_cloudwatch_dashboard.actions_runner.dashboard_name
+}
+
+output "dashboard_url" {
+  description = "URL of the CloudWatch dashboard the module creates for this runner pool."
+  value       = "https://${data.aws_region.current.name}.console.aws.amazon.com/cloudwatch/home?region=${data.aws_region.current.name}#dashboards:name=${aws_cloudwatch_dashboard.actions_runner.dashboard_name}"
+}

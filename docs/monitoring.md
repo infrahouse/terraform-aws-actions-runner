@@ -68,7 +68,20 @@ Created automatically:
 |-------|-----------|--------|
 | `idle_runners_low` | Idle < target | Scale out |
 | `idle_runners_high` | Idle > target | Scale in |
-| `cpu_utilization` | CPU > 90% | Alert |
+
+### EC2 and ASG Alarms
+
+Created automatically, all routed to the module-owned SNS topic (and to any ARNs in `alarm_topic_arns`):
+
+| Alarm | Condition | Why |
+|-------|-----------|-----|
+| `CPU Alarm on ASG <name>` | Average CPU > 90% for 1 minute | Runner under sustained load |
+| `ASGAtMax-<name>` | `GroupInServiceInstances >= asg_max_size` for 5 minutes | Saturation — ceiling may need raising |
+| `ASGZeroInService-<name>` | `GroupInServiceInstances == 0` while `GroupDesiredCapacity > 0` for 10 minutes | Catastrophic — ASG wants instances but has none |
+| `WarmPoolEmpty-<name>` | `WarmPoolWarmedCapacity == 0` while `WarmPoolDesiredCapacity > 0` for 10 minutes (when warm pool enabled) | Latency-hiding optimization is off |
+| `ASGLaunchStuck-<name>` | `GroupPendingInstances > 0` sustained >20 minutes | Likely launch failure (LT, capacity, IAM). 20-min threshold sits above Puppet's ~15-min provisioning window. |
+| `RunnerRegistrationGap-<name>` | `GroupInServiceInstances - (BusyRunners + IdleRunners) > 0` for >5 minutes | EC2 is InService but runner never registered with GitHub |
+| `ASGSaturatedAtMax-<name>` | At max size with every runner busy for 10 minutes | Scale-out cannot help; jobs are queueing |
 
 ### Lambda Alarms
 
@@ -184,6 +197,25 @@ resource "aws_sns_topic_subscription" "slack" {
 }
 ```
 
+## CloudWatch Dashboard
+
+The module creates a CloudWatch dashboard named after the ASG. It surfaces, in order:
+
+1. Alarm state for every alarm this module owns.
+2. `BusyRunners` / `IdleRunners` and derived utilization.
+3. Fleet size (desired / in-service / min / max) and transient states (pending, terminating, standby).
+4. Warm pool capacity (when warm pool is enabled).
+5. `IdleRunners` with scale-out/scale-in thresholds annotated, plus autoscaling alarm state.
+6. EC2 CPU (average + p95) and status-check failures.
+7. Lambda lifecycle — invocations / errors / throttles / p95 duration for registration, deregistration, and record_metric.
+
+```hcl
+# URL available as an output
+output "runner_dashboard" {
+  value = module.actions-runner.dashboard_url
+}
+```
+
 ### Host-Level Alarms (Disk, Memory)
 
 Not shipped yet. The runner AMI does not run the CloudWatch agent today, so
@@ -231,12 +263,10 @@ aws autoscaling describe-warm-pool \
 
 The module provides these monitoring-related outputs:
 
-```hcl
-output "autoscaling_group_name" {
-  description = "ASG name for CloudWatch queries"
-}
-
-output "deregistration_log_group" {
-  description = "CloudWatch log group for deregistration Lambda"
-}
-```
+| Output | Description |
+|--------|-------------|
+| `autoscaling_group_name` | ASG name for CloudWatch queries |
+| `alarm_topic_arn` | Module-owned SNS topic ARN; subscribe additional endpoints here |
+| `dashboard_name` | Name of the CloudWatch dashboard |
+| `dashboard_url` | Deep link to the CloudWatch dashboard |
+| `deregistration_log_group` | CloudWatch log group for deregistration Lambda |

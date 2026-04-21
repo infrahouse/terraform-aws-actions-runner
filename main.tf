@@ -143,6 +143,28 @@ resource "aws_autoscaling_group" "actions-runner" {
   max_instance_lifetime     = var.max_instance_lifetime_days * 24 * 3600
   health_check_grace_period = 0
   wait_for_capacity_timeout = "15m"
+
+  # Group metrics are not emitted to CloudWatch by default; enabling here
+  # makes the alarms in cloudwatch.tf and the dashboard widgets actually
+  # receive data. 1-minute granularity is free.
+  metrics_granularity = "1Minute"
+  enabled_metrics = [
+    "GroupMinSize",
+    "GroupMaxSize",
+    "GroupDesiredCapacity",
+    "GroupInServiceInstances",
+    "GroupPendingInstances",
+    "GroupStandbyInstances",
+    "GroupTerminatingInstances",
+    "GroupTotalInstances",
+    "WarmPoolDesiredCapacity",
+    "WarmPoolWarmedCapacity",
+    "WarmPoolPendingCapacity",
+    "WarmPoolTerminatingCapacity",
+    "WarmPoolTotalCapacity",
+    "GroupAndWarmPoolDesiredCapacity",
+    "GroupAndWarmPoolTotalCapacity",
+  ]
   dynamic "launch_template" {
     for_each = var.on_demand_base_capacity == null ? [1] : []
     content {
