@@ -3,7 +3,7 @@ resource "aws_cloudwatch_metric_alarm" "cpu_utilization_alarm" {
   comparison_operator = "GreaterThanThreshold"
   metric_name         = "CPUUtilization"
   statistic           = "Average"
-  evaluation_periods  = 1
+  evaluation_periods  = 5
   period              = 60
   threshold           = 90
   namespace           = "AWS/EC2"
@@ -14,7 +14,11 @@ resource "aws_cloudwatch_metric_alarm" "cpu_utilization_alarm" {
   }
 }
 
+# Skipped on fixed-size pools (asg_min == asg_max) where sitting at max is
+# the intended steady state and would alarm continuously.
 resource "aws_cloudwatch_metric_alarm" "asg_at_max" {
+  count = local.asg_min < local.asg_max ? 1 : 0
+
   alarm_name          = "ASGAtMax-${aws_autoscaling_group.actions-runner.name}"
   comparison_operator = "GreaterThanOrEqualToThreshold"
   metric_name         = "GroupInServiceInstances"
@@ -142,12 +146,19 @@ resource "aws_cloudwatch_metric_alarm" "asg_launch_stuck" {
 # Instances only reach InService after the Launch lifecycle hook completes
 # (runner_registration Lambda), so a registered runner should exist by then.
 # A sustained gap catches the "EC2 up but never registered" class.
+#
+# Threshold > 1 (not > 0) absorbs brief single-instance transients — most
+# commonly an instance waking from warm-pool hibernation: for ~30–60s the
+# instance is InService but the runner agent hasn't re-announced online to
+# GitHub yet, so m_is=1 and m_busy+m_idle=0. The 5-period sustained window
+# already covers this, but > 1 adds a belt to the suspenders. The real
+# #93 failure mode is a permanent gap, which trips any positive threshold.
 resource "aws_cloudwatch_metric_alarm" "runner_registration_gap" {
   alarm_name          = "RunnerRegistrationGap-${aws_autoscaling_group.actions-runner.name}"
   comparison_operator = "GreaterThanThreshold"
-  threshold           = 0
+  threshold           = 1
   evaluation_periods  = 5
-  alarm_description   = "Registered runners fewer than InService EC2 instances for >5 minutes on ASG ${aws_autoscaling_group.actions-runner.name} — instances launched but never registered with GitHub"
+  alarm_description   = "Registered runners more than 1 fewer than InService EC2 instances for >5 minutes on ASG ${aws_autoscaling_group.actions-runner.name} — instances launched but never registered with GitHub"
   alarm_actions       = local.all_alarm_topic_arns
   treat_missing_data  = "notBreaching"
 
@@ -200,8 +211,11 @@ resource "aws_cloudwatch_metric_alarm" "runner_registration_gap" {
 
 # Distinct from IdleRunnersTooLow (which triggers scale-out): here we're
 # already at max size with zero idle runners, so scale-out can't help and
-# jobs are queueing.
+# jobs are queueing. Skipped on fixed-size pools where scaling isn't
+# available — saturation is the intended steady state.
 resource "aws_cloudwatch_metric_alarm" "asg_saturated_at_max" {
+  count = local.asg_min < local.asg_max ? 1 : 0
+
   alarm_name          = "ASGSaturatedAtMax-${aws_autoscaling_group.actions-runner.name}"
   comparison_operator = "GreaterThanOrEqualToThreshold"
   threshold           = 1
