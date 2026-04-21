@@ -14,6 +14,236 @@ resource "aws_cloudwatch_metric_alarm" "cpu_utilization_alarm" {
   }
 }
 
+resource "aws_cloudwatch_metric_alarm" "asg_at_max" {
+  alarm_name          = "ASGAtMax-${aws_autoscaling_group.actions-runner.name}"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  metric_name         = "GroupInServiceInstances"
+  namespace           = "AWS/AutoScaling"
+  statistic           = "Average"
+  period              = 60
+  evaluation_periods  = 5
+  threshold           = local.asg_max
+  alarm_description   = "ASG ${aws_autoscaling_group.actions-runner.name} pinned at max size for 5 minutes — raise ceiling or investigate stuck jobs"
+  dimensions = {
+    AutoScalingGroupName = aws_autoscaling_group.actions-runner.name
+  }
+  alarm_actions      = local.all_alarm_topic_arns
+  treat_missing_data = "notBreaching"
+}
+
+resource "aws_cloudwatch_metric_alarm" "asg_zero_in_service" {
+  alarm_name          = "ASGZeroInService-${aws_autoscaling_group.actions-runner.name}"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  threshold           = 1
+  evaluation_periods  = 10
+  alarm_description   = "ASG ${aws_autoscaling_group.actions-runner.name} has 0 instances in service while desired capacity > 0 for 10 minutes"
+  alarm_actions       = local.all_alarm_topic_arns
+  treat_missing_data  = "notBreaching"
+
+  metric_query {
+    id          = "e1"
+    expression  = "IF(m_is < 1 AND m_dc > 0, 1, 0)"
+    label       = "In-service dropped to zero with desired > 0"
+    return_data = true
+  }
+
+  metric_query {
+    id = "m_is"
+    metric {
+      metric_name = "GroupInServiceInstances"
+      namespace   = "AWS/AutoScaling"
+      period      = 60
+      stat        = "Average"
+      dimensions = {
+        AutoScalingGroupName = aws_autoscaling_group.actions-runner.name
+      }
+    }
+  }
+
+  metric_query {
+    id = "m_dc"
+    metric {
+      metric_name = "GroupDesiredCapacity"
+      namespace   = "AWS/AutoScaling"
+      period      = 60
+      stat        = "Average"
+      dimensions = {
+        AutoScalingGroupName = aws_autoscaling_group.actions-runner.name
+      }
+    }
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "warm_pool_empty" {
+  count = var.on_demand_base_capacity == null ? 1 : 0
+
+  alarm_name          = "WarmPoolEmpty-${aws_autoscaling_group.actions-runner.name}"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  threshold           = 1
+  evaluation_periods  = 10
+  alarm_description   = "Warm pool for ${aws_autoscaling_group.actions-runner.name} is empty (warmed = 0 while desired > 0) — the latency-hiding optimization is off"
+  alarm_actions       = local.all_alarm_topic_arns
+  treat_missing_data  = "notBreaching"
+
+  metric_query {
+    id          = "e1"
+    expression  = "IF(m_warmed < 1 AND m_desired > 0, 1, 0)"
+    label       = "Warm pool drained"
+    return_data = true
+  }
+
+  metric_query {
+    id = "m_warmed"
+    metric {
+      metric_name = "WarmPoolWarmedCapacity"
+      namespace   = "AWS/AutoScaling"
+      period      = 60
+      stat        = "Average"
+      dimensions = {
+        AutoScalingGroupName = aws_autoscaling_group.actions-runner.name
+      }
+    }
+  }
+
+  metric_query {
+    id = "m_desired"
+    metric {
+      metric_name = "WarmPoolDesiredCapacity"
+      namespace   = "AWS/AutoScaling"
+      period      = 60
+      stat        = "Average"
+      dimensions = {
+        AutoScalingGroupName = aws_autoscaling_group.actions-runner.name
+      }
+    }
+  }
+}
+
+# Puppet provisioning can legitimately run up to ~15 min on cold boot; the
+# 20-minute sustained threshold sits above that ceiling so normal scale-out
+# doesn't trip it.
+resource "aws_cloudwatch_metric_alarm" "asg_launch_stuck" {
+  alarm_name          = "ASGLaunchStuck-${aws_autoscaling_group.actions-runner.name}"
+  comparison_operator = "GreaterThanThreshold"
+  metric_name         = "GroupPendingInstances"
+  namespace           = "AWS/AutoScaling"
+  statistic           = "Average"
+  period              = 60
+  evaluation_periods  = 20
+  threshold           = 0
+  alarm_description   = "ASG ${aws_autoscaling_group.actions-runner.name} has pending instances stuck for >20 minutes — likely launch failure (bad launch template, capacity, IAM)"
+  dimensions = {
+    AutoScalingGroupName = aws_autoscaling_group.actions-runner.name
+  }
+  alarm_actions      = local.all_alarm_topic_arns
+  treat_missing_data = "notBreaching"
+}
+
+# Instances only reach InService after the Launch lifecycle hook completes
+# (runner_registration Lambda), so a registered runner should exist by then.
+# A sustained gap catches the "EC2 up but never registered" class.
+resource "aws_cloudwatch_metric_alarm" "runner_registration_gap" {
+  alarm_name          = "RunnerRegistrationGap-${aws_autoscaling_group.actions-runner.name}"
+  comparison_operator = "GreaterThanThreshold"
+  threshold           = 0
+  evaluation_periods  = 5
+  alarm_description   = "Registered runners fewer than InService EC2 instances for >5 minutes on ASG ${aws_autoscaling_group.actions-runner.name} — instances launched but never registered with GitHub"
+  alarm_actions       = local.all_alarm_topic_arns
+  treat_missing_data  = "notBreaching"
+
+  metric_query {
+    id          = "e1"
+    expression  = "m_is - (m_busy + m_idle)"
+    label       = "InService - (Busy + Idle)"
+    return_data = true
+  }
+
+  metric_query {
+    id = "m_is"
+    metric {
+      metric_name = "GroupInServiceInstances"
+      namespace   = "AWS/AutoScaling"
+      period      = 60
+      stat        = "Average"
+      dimensions = {
+        AutoScalingGroupName = aws_autoscaling_group.actions-runner.name
+      }
+    }
+  }
+
+  metric_query {
+    id = "m_busy"
+    metric {
+      metric_name = "BusyRunners"
+      namespace   = "GitHubRunners"
+      period      = 60
+      stat        = "Average"
+      dimensions = {
+        asg_name = aws_autoscaling_group.actions-runner.name
+      }
+    }
+  }
+
+  metric_query {
+    id = "m_idle"
+    metric {
+      metric_name = "IdleRunners"
+      namespace   = "GitHubRunners"
+      period      = 60
+      stat        = "Average"
+      dimensions = {
+        asg_name = aws_autoscaling_group.actions-runner.name
+      }
+    }
+  }
+}
+
+# Distinct from IdleRunnersTooLow (which triggers scale-out): here we're
+# already at max size with zero idle runners, so scale-out can't help and
+# jobs are queueing.
+resource "aws_cloudwatch_metric_alarm" "asg_saturated_at_max" {
+  alarm_name          = "ASGSaturatedAtMax-${aws_autoscaling_group.actions-runner.name}"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  threshold           = 1
+  evaluation_periods  = 10
+  alarm_description   = "ASG ${aws_autoscaling_group.actions-runner.name} at max size with all runners busy for 10 minutes — scale-out cannot help; jobs queueing"
+  alarm_actions       = local.all_alarm_topic_arns
+  treat_missing_data  = "notBreaching"
+
+  metric_query {
+    id          = "e1"
+    expression  = "IF(m_is >= ${local.asg_max} AND m_busy >= m_is, 1, 0)"
+    label       = "At max size and fully utilized"
+    return_data = true
+  }
+
+  metric_query {
+    id = "m_is"
+    metric {
+      metric_name = "GroupInServiceInstances"
+      namespace   = "AWS/AutoScaling"
+      period      = 60
+      stat        = "Average"
+      dimensions = {
+        AutoScalingGroupName = aws_autoscaling_group.actions-runner.name
+      }
+    }
+  }
+
+  metric_query {
+    id = "m_busy"
+    metric {
+      metric_name = "BusyRunners"
+      namespace   = "GitHubRunners"
+      period      = 60
+      stat        = "Average"
+      dimensions = {
+        asg_name = aws_autoscaling_group.actions-runner.name
+      }
+    }
+  }
+}
+
 module "record_metric" {
   source                         = "./modules/record_metric"
   asg_name                       = aws_autoscaling_group.actions-runner.name
