@@ -22,6 +22,7 @@ locals {
   instance_memory_gb = ceil(data.aws_ec2_instance_type.this.memory_size / 1024.0)
   # Extra space on root volume for OS, packages, and swap beyond what hibernation needs for RAM
   hibernation_volume_overhead_gb = 10
+  asg_min                        = var.asg_min_size != null ? var.asg_min_size : length(var.subnet_ids)
   asg_max                        = var.asg_max_size != null ? var.asg_max_size : length(var.subnet_ids) + 1
   warm_pool_max                  = var.warm_pool_max_size != null ? var.warm_pool_max_size : local.asg_max
   # +1 ensures at least one pre-warmed instance is always available during scale-out

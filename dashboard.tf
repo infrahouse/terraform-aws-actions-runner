@@ -5,14 +5,14 @@ locals {
   dashboard_alarm_arns = concat(
     [
       aws_cloudwatch_metric_alarm.cpu_utilization_alarm.arn,
-      aws_cloudwatch_metric_alarm.asg_at_max.arn,
       aws_cloudwatch_metric_alarm.asg_zero_in_service.arn,
       aws_cloudwatch_metric_alarm.asg_launch_stuck.arn,
       aws_cloudwatch_metric_alarm.runner_registration_gap.arn,
-      aws_cloudwatch_metric_alarm.asg_saturated_at_max.arn,
       aws_cloudwatch_metric_alarm.idle_runners_low.arn,
       aws_cloudwatch_metric_alarm.idle_runners_high.arn,
     ],
+    aws_cloudwatch_metric_alarm.asg_at_max[*].arn,
+    aws_cloudwatch_metric_alarm.asg_saturated_at_max[*].arn,
     aws_cloudwatch_metric_alarm.warm_pool_empty[*].arn,
   )
 
