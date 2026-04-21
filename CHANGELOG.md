@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.0.0] - 2026-04-21
+
+### Bug Fixes
+
+- Encrypt alarm SNS topic with AWS-managed KMS key
+- Tune alarm thresholds and gate at-max alarms for fixed-size pools
+
+### Documentation
+
+- Fix mkdocs sidebar and add examples page
+- Pin example module versions exactly and wire into bumpversion
+
+### Features
+
+- Adopt lambda-monitored SNS pattern; always create alarm topic ([#93](https://github.com/infrahouse/terraform-aws-actions-runner/issues/93))
+- Expand alarm coverage and add CloudWatch dashboard ([#93](https://github.com/infrahouse/terraform-aws-actions-runner/issues/93))
+
 ## [3.5.0] - 2026-04-19
 
 ### Bug Fixes
