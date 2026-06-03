@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.0.1] - 2026-06-03
+
+### Features
+
+- Bump lambda-monitored to 1.1.1 for vanta CRR exemption on zip buckets
+
 ## [4.0.0] - 2026-04-21
 
 ### Bug Fixes
