@@ -90,7 +90,7 @@ resource "aws_iam_policy" "runner_deregistration_permissions" {
 # Lambda function with monitoring using terraform-aws-lambda-monitored module
 module "lambda_monitored" {
   source  = "registry.infrahouse.com/infrahouse/lambda-monitored/aws"
-  version = "1.1.0"
+  version = "1.1.1"
 
   function_name                        = "${var.asg_name}_deregistration"
   lambda_source_dir                    = "${path.module}/lambda"
