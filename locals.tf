@@ -1,5 +1,5 @@
 locals {
-  module_version = "4.0.1"
+  module_version = "4.1.0"
 
   lts_codenames = ["noble"]
 
