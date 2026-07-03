@@ -201,7 +201,7 @@ module "actions-runner" {
 | <a name="module_instance-profile"></a> [instance-profile](#module\_instance-profile) | registry.infrahouse.com/infrahouse/instance-profile/aws | 1.9.0 |
 | <a name="module_record_metric"></a> [record\_metric](#module\_record\_metric) | ./modules/record_metric | n/a |
 | <a name="module_registration"></a> [registration](#module\_registration) | ./modules/runner_registration | n/a |
-| <a name="module_userdata"></a> [userdata](#module\_userdata) | registry.infrahouse.com/infrahouse/cloud-init/aws | 2.3.0 |
+| <a name="module_userdata"></a> [userdata](#module\_userdata) | registry.infrahouse.com/infrahouse/cloud-init/aws | 2.4.0 |
 
 ## Resources
 
