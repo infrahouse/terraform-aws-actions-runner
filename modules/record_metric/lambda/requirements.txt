@@ -1,1 +1,7 @@
 infrahouse-core ~= 1.0
+
+# Security floor for a transitive dependency (pulled in via infrahouse-core ->
+# PyGithub -> PyJWT). cryptography wheels < 48.0.1 statically link a vulnerable
+# OpenSSL (GHSA-537c-gmf6-5ccf). Floor only -- cryptography bumps its major
+# frequently, so a ~= pin would go stale.
+cryptography >= 48.0.1
