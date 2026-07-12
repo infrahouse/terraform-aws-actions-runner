@@ -171,13 +171,13 @@ variable "keypair_name" {
 }
 
 variable "max_instance_lifetime_days" {
-  description = "The maximum amount of time, in _days_, that an instance can be in service, values must be either equal to 0 or between 7 and 365 days."
+  description = "The maximum amount of time, in _days_, that an instance can be in service, values must be either equal to 0 or between 1 and 365 days."
   type        = number
   default     = 30
 
   validation {
-    condition     = var.max_instance_lifetime_days == 0 || (var.max_instance_lifetime_days >= 7 && var.max_instance_lifetime_days <= 365)
-    error_message = "The max_instance_lifetime_days must be either 0 or between 7 and 365 days."
+    condition     = var.max_instance_lifetime_days == 0 || (var.max_instance_lifetime_days >= 1 && var.max_instance_lifetime_days <= 365)
+    error_message = "The max_instance_lifetime_days must be either 0 or between 1 and 365 days."
   }
 }
 
