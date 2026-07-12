@@ -91,6 +91,26 @@ def _handle_deregistration_hook(instance_id):
             Parameters={"commands": ["/usr/bin/systemctl stop actions-runner.service"]},
         )
     except ClientError as err:
+        if err.response["Error"]["Code"] == "InvalidInstanceId":
+            # The SSM agent hasn't registered yet (cold-start race: the instance
+            # was scaled in within ~1-2 min of launch) or the instance is already
+            # gone. Either way the on-host `systemctl stop` can never be delivered,
+            # so ExecStopPost will never complete the hook and the instance would
+            # sit in Terminating:Wait until GlobalTimeout (48h). Complete the action
+            # ourselves — the runner is unreachable, and GitHub-side cleanup is
+            # covered by the scheduled _clean_runners sweep.
+            LOG.warning(
+                "SSM unreachable for %s (InvalidInstanceId); completing "
+                "deregistration hook with CONTINUE instead of hanging until timeout.",
+                instance_id,
+            )
+            _autoscaling.complete_lifecycle_action(
+                LifecycleHookName=HOOK_DEREGISTRATION,
+                AutoScalingGroupName=asg_name,
+                InstanceId=instance_id,
+                LifecycleActionResult="CONTINUE",
+            )
+            return
         LOG.error(
             "Failed to send SSM stop to %s: %s. "
             "Lifecycle hook will time out after heartbeat_timeout and ABANDON.",
