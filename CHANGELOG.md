@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.2.0] - 2026-07-12
+
+### Bug Fixes
+
+- Complete deregistration hook on SSM cold-start race ([#96](https://github.com/infrahouse/terraform-aws-actions-runner/issues/96))
+
+### Features
+
+- Lower max_instance_lifetime_days floor from 7 to 1
+
 ## [4.1.1] - 2026-07-09
 
 ### Bug Fixes
