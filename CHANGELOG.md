@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.3.0] - 2026-07-30
+
+### Features
+
+- Exclude runners from Inspector scans until they finish patching
+
 ## [4.2.0] - 2026-07-12
 
 ### Bug Fixes
