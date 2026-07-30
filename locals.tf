@@ -3,12 +3,13 @@ locals {
 
   lts_codenames = ["noble"]
 
+  module_marker = "infrahouse/actions-runner/aws"
   default_module_tags = merge(
     {
       environment : var.environment
       service : "actions-runner"
       account : data.aws_caller_identity.current.account_id
-      created_by_module : "infrahouse/actions-runner/aws"
+      created_by_module : local.module_marker
     },
     var.tags
   )
@@ -35,6 +36,23 @@ locals {
   registration_hookname            = "registration"
   deregistration_hookname          = "deregistration"
   bootstrap_hookname               = "bootstrap"
+
+  # Inspector scans a new instance roughly 70-80 seconds into boot, minutes
+  # before profile::github_runner finishes applying security upgrades. Without
+  # this tag every launch reports vulnerabilities that are already fixed by the
+  # time anyone reads the finding.
+  inspector_exclusion_tag = "InspectorEc2Exclusion"
+
+  # Runs from post_runcmd, which the cloud-init bootstrap script executes before
+  # it signals the bootstrap lifecycle hook. A failure here trips that script's
+  # ERR trap and the instance is ABANDONed, so an instance cannot reach service
+  # while still excluded from scanning.
+  inspector_unexclude_cmd = join(" ", [
+    "aws ec2 delete-tags",
+    "--region ${data.aws_region.current.name}",
+    "--resources $(ec2metadata --instance-id)",
+    "--tags Key=${local.inspector_exclusion_tag}",
+  ])
 
   all_alarm_topic_arns = concat(
     [aws_sns_topic.alarms.arn],

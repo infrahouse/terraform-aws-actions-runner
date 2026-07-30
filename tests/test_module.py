@@ -15,6 +15,7 @@ from tests.conftest import (
     TERRAFORM_ROOT_DIR,
     GITHUB_ORG_NAME,
     assert_lambda_memory_within_limit,
+    assert_no_inspector_exclusion_tag,
     ensure_runners,
     get_tmp_token,
     invoke_deregistration_sweep,
@@ -127,6 +128,16 @@ def test_module(
                 timeout_time=900
                 + asg_max_size
                 * 900,  # 300 seconds to provision, 300 - warmup, 300 - cooldown old.
+                test_role_arn=test_role_arn,
+            )
+
+            # Runners only reach "online" after the bootstrap script signals the
+            # lifecycle hook, and the exclusion tag is dropped just before that
+            # signal. A registered runner still carrying the tag means Inspector
+            # is not scanning an instance that is already taking jobs.
+            assert_no_inspector_exclusion_tag(
+                gha,
+                aws_region,
                 test_role_arn=test_role_arn,
             )
 

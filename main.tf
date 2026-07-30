@@ -65,7 +65,13 @@ module "userdata" {
   # runcmd chain (puppet, package installs, consumer post_runcmd) results in ABANDON rather than
   # a false CONTINUE. See https://github.com/infrahouse/terraform-aws-actions-runner/issues/86
   lifecycle_hook_name = local.bootstrap_hookname
-  post_runcmd         = var.post_runcmd
+  # The un-exclude must be the last thing to run: post_runcmd is executed before
+  # the bootstrap script signals the hook with CONTINUE, so Inspector only ever
+  # sees an instance that has finished patching itself.
+  post_runcmd = concat(
+    var.post_runcmd,
+    [local.inspector_unexclude_cmd],
+  )
 }
 
 
@@ -237,6 +243,13 @@ resource "aws_autoscaling_group" "actions-runner" {
     key                 = "module_version"
     propagate_at_launch = true
     value               = local.module_version
+  }
+
+  # Removed by local.inspector_unexclude_cmd once the instance has converged.
+  tag {
+    key                 = local.inspector_exclusion_tag
+    propagate_at_launch = true
+    value               = "bootstrapping"
   }
 
   dynamic "tag" {

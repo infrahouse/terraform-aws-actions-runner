@@ -2,6 +2,7 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 from time import sleep
+from typing import Optional
 
 import pytest
 
@@ -21,6 +22,7 @@ LOG = logging.getLogger(__name__)
 GITHUB_ORG_NAME = "infrahouse"
 TERRAFORM_ROOT_DIR = "test_data"
 GH_APP_ID = 1016363
+INSPECTOR_EXCLUSION_TAG = "InspectorEc2Exclusion"
 
 # Maximum LambdaInsights memory_utilization (percent) we tolerate in tests.
 # The prod alarm fires at 80%; the test margin is tighter so regressions are
@@ -103,6 +105,53 @@ def ensure_runners(
     except TimeoutError:
         LOG.error("No registered runners after %d seconds.", timeout_time)
         assert False
+
+
+def assert_no_inspector_exclusion_tag(
+    gha: GitHubActions,
+    aws_region: str,
+    test_role_arn: Optional[str] = None,
+) -> None:
+    """
+    Fail if a registered runner still carries the Amazon Inspector exclusion tag.
+
+    Instances launch tagged with ``InspectorEc2Exclusion`` so Inspector does not scan
+    them, and raise findings against the AMI's package baseline, before the boot-time
+    security upgrade has finished. The tag is removed from ``post_runcmd``, which the
+    cloud-init bootstrap script runs before it signals the bootstrap lifecycle hook.
+    A runner that is registered and online has therefore passed that point, so a
+    leftover tag means the instance is serving jobs while invisible to vulnerability
+    scanning.
+
+    :param gha: GitHub Actions client used to find the registered runners.
+    :param aws_region: AWS region the autoscaling group lives in.
+    :param test_role_arn: Optional role ARN to assume for the AWS calls.
+    :raises AssertionError: If no runners are registered, or if any instance in the
+        autoscaling group still carries the exclusion tag.
+    """
+    runners = list(gha.find_runners_by_label("awesome"))
+    assert (
+        runners
+    ), "No registered runners found to check for the Inspector exclusion tag."
+
+    asg_instance = ASGInstance(
+        instance_id=runners[0].instance_id, role_arn=test_role_arn, region=aws_region
+    )
+    asg = ASG(asg_instance.asg_name, role_arn=test_role_arn, region=aws_region)
+
+    for instance in asg.instances:
+        # Inspector matches the exclusion key case-insensitively, so a tag differing
+        # only in case would still suppress scanning.
+        leftover = [
+            key
+            for key in instance.tags
+            if key.lower() == INSPECTOR_EXCLUSION_TAG.lower()
+        ]
+        LOG.info("Instance %s exclusion tags: %s", instance.instance_id, leftover)
+        assert not leftover, (
+            f"Instance {instance.instance_id} is a registered runner but still carries "
+            f"{leftover}, so Amazon Inspector will not scan it."
+        )
 
 
 def assert_lambda_memory_within_limit(
