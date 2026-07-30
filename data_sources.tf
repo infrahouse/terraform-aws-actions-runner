@@ -36,6 +36,41 @@ data "aws_iam_policy_document" "required_permissions" {
       )
     ]
   }
+  # Lets an instance drop its own Inspector exclusion tag once it has converged.
+  # Scoped both to instances this module created and to that single tag key, so
+  # the role cannot strip arbitrary tags off arbitrary instances.
+  statement {
+    actions = [
+      "ec2:DeleteTags",
+    ]
+    resources = [
+      join(
+        ":",
+        [
+          "arn",
+          "aws",
+          "ec2",
+          data.aws_region.current.name,
+          data.aws_caller_identity.current.account_id,
+          "instance/*"
+        ]
+      )
+    ]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceTag/created_by_module"
+      values = [
+        local.module_marker
+      ]
+    }
+    condition {
+      test     = "ForAllValues:StringEquals"
+      variable = "aws:TagKeys"
+      values = [
+        local.inspector_exclusion_tag
+      ]
+    }
+  }
   statement {
     actions = [
       "secretsmanager:GetSecretValue",
