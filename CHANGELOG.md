@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.4.0] - 2026-08-13
+
+### Miscellaneous Tasks
+
+- Update terraform registry.infrahouse.com/infrahouse/instance-profile/aws to v2
+
 ## [4.3.0] - 2026-07-30
 
 ### Features
