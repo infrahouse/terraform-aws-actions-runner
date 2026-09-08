@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.4.1] - 2026-09-08
+
+### Bug Fixes
+
+- Bump infrahouse/cloud-init/aws to 2.4.1
+
+### Documentation
+
+- Add plan for transparent git credentials on self-hosted runners
+
 ## [4.4.0] - 2026-08-13
 
 ### Miscellaneous Tasks
