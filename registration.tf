@@ -10,6 +10,7 @@ module "registration" {
   github_app_id                    = var.github_app_id
   registration_token_secret_prefix = local.registration_token_secret_prefix
   lambda_timeout                   = var.allowed_drain_time
+  role_name_prefix                 = local.registration_role_name_prefix
   alarm_emails                     = var.alarm_emails
   error_rate_threshold             = var.error_rate_threshold
   tags                             = local.default_module_tags
@@ -33,6 +34,7 @@ module "deregistration" {
   github_app_id                    = var.github_app_id
   registration_token_secret_prefix = local.registration_token_secret_prefix
   lambda_timeout                   = var.allowed_drain_time
+  role_name_prefix                 = local.deregistration_role_name_prefix
   tags                             = local.default_module_tags
   python_version                   = var.python_version
   architecture                     = var.architecture

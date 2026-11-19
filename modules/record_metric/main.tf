@@ -68,6 +68,7 @@ module "lambda_monitored" {
   alert_strategy                       = "threshold"
   error_rate_threshold                 = var.error_rate_threshold
   additional_iam_policy_arns           = [aws_iam_policy.record_metric_permissions.arn]
+  role_name_prefix                     = var.role_name_prefix
 
   environment_variables = {
     ASG_NAME           = var.asg_name

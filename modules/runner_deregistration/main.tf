@@ -104,6 +104,7 @@ module "lambda_monitored" {
   alert_strategy                       = "threshold"
   error_rate_threshold                 = var.error_rate_threshold
   additional_iam_policy_arns           = [aws_iam_policy.runner_deregistration_permissions.arn]
+  role_name_prefix                     = var.role_name_prefix
 
   # VPC Configuration
   lambda_subnet_ids         = var.subnet_ids
