@@ -32,6 +32,18 @@ locals {
     local.warm_pool_max
   )
 
+  # Issue #109: every Lambda execution role is named actions-runner-lambda-<pool>-<function>-<suffix>,
+  # so a policy can select this pool's Lambdas, or every pool's, by name pattern without also
+  # selecting an instance role (those start with actions-runner-instance-).
+  # <pool> is random_string.asg_name, the suffix of the ASG name. Unlike the ASG name, which embeds
+  # the launch template's timestamped name, it doesn't change when the launch template is replaced.
+  lambda_role_name_prefix = "actions-runner-lambda-${random_string.asg_name.result}-"
+  # lambda-monitored accepts at most 38 characters, which AWS's 64-character role name limit leaves
+  # after Terraform's 26-character suffix. The longest is 22 + 6 (pool) + 1 + 6 ("metric") + 1 = 36.
+  registration_role_name_prefix   = "${local.lambda_role_name_prefix}reg-"
+  deregistration_role_name_prefix = "${local.lambda_role_name_prefix}dereg-"
+  record_metric_role_name_prefix  = "${local.lambda_role_name_prefix}metric-"
+
   registration_token_secret_prefix = "GH-reg-token-${random_string.reg_token_suffix.result}"
   registration_hookname            = "registration"
   deregistration_hookname          = "deregistration"

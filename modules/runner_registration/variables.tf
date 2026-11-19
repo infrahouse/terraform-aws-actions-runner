@@ -74,6 +74,15 @@ variable "registration_token_secret_prefix" {
   type        = string
 }
 
+variable "role_name_prefix" {
+  description = <<-EOT
+    Name prefix for the Lambda execution role, passed to terraform-aws-lambda-monitored as role_name_prefix.
+    It is used verbatim and Terraform appends a 26-character suffix, so end it with "-".
+    1 to 38 characters from letters, digits and +=,.@_-.
+  EOT
+  type        = string
+}
+
 variable "security_group_ids" {
   description = "List of security group ids where the lambda will be created."
   type        = list(string)

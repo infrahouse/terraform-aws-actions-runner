@@ -264,6 +264,7 @@ module "record_metric" {
   cloudwatch_log_group_retention = var.cloudwatch_log_group_retention
   architecture                   = var.architecture
   python_version                 = var.python_version
+  role_name_prefix               = local.record_metric_role_name_prefix
 
   github_org_name = var.github_org_name
   github_credentials = {
