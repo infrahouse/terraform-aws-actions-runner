@@ -6,7 +6,7 @@ import sys
 from os import path as osp, remove
 from shutil import rmtree
 from textwrap import dedent
-from typing import List
+from typing import List, Optional
 
 import boto3
 import pytest
@@ -238,7 +238,9 @@ def _terraform(args: List[str], cwd: str) -> subprocess.CompletedProcess:
     )
 
 
-def _write_validation_root(root_dir: str, role_name: str, python_version: str) -> None:
+def _write_validation_root(
+    root_dir: str, role_name: Optional[str], python_version: str
+) -> None:
     """
     Write a root module that calls this module with the given inputs as literals.
 
@@ -246,7 +248,7 @@ def _write_validation_root(root_dir: str, role_name: str, python_version: str) -
     before planning. The other required inputs are placeholders that are never used.
 
     :param root_dir: Directory to write ``main.tf`` into.
-    :param role_name: Value for the module's ``role_name`` input.
+    :param role_name: Value for the module's ``role_name`` input; ``None`` writes ``null``.
     :param python_version: Value for the module's ``python_version`` input.
     """
     with open(osp.join(root_dir, "main.tf"), "w") as fp:
@@ -286,6 +288,9 @@ def validation_root(tmp_path_factory) -> str:
         ("actions/runner", DEFAULT_PYTHON_VERSION, "role_name"),
         ("actions-runner*", DEFAULT_PYTHON_VERSION, "role_name"),
         ("", DEFAULT_PYTHON_VERSION, "role_name"),
+        # null used to fall back to a name_prefix-based role; it can't make
+        # actions-runner-instance-<role_name>, so it must be rejected, not crash.
+        (None, DEFAULT_PYTHON_VERSION, "role_name"),
         # lambda-monitored 2.x only supports the Amazon Linux 2023 runtimes.
         (DEFAULT_ROLE_NAME, "python3.11", "python_version"),
     ],
@@ -294,6 +299,7 @@ def validation_root(tmp_path_factory) -> str:
         "role-name-slash",
         "role-name-wildcard",
         "role-name-empty",
+        "role-name-null",
         "python-3.11",
     ],
 )
