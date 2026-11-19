@@ -212,6 +212,13 @@ def test_module(
 REPO_ROOT = osp.abspath(osp.join(osp.dirname(__file__), ".."))
 DEFAULT_ROLE_NAME = "actions-runner"
 DEFAULT_PYTHON_VERSION = "python3.12"
+# Text only this module's validation rules produce. Nested modules validate some of the
+# same inputs with the same "Invalid value for variable" summary (lambda-monitored checks
+# python_version), so the tests look for these to prove the root module rejects them.
+ROLE_NAME_ERROR = (
+    "role_name must be a string of 1 to 40 letters, digits or +=,.@_- characters. Got"
+)
+PYTHON_VERSION_ERROR = "python_version must be python3.12 or python3.13. Got"
 
 
 def _terraform(args: List[str], cwd: str) -> subprocess.CompletedProcess:
@@ -285,18 +292,19 @@ def validation_root(tmp_path_factory) -> str:
 
 
 @pytest.mark.parametrize(
-    "role_name, python_version, invalid_variable",
+    "role_name, python_version, invalid_variable, expected_error",
     [
         # actions-runner-instance- is 24 characters, so 41 makes a 65-character role name.
-        ("r" * 41, DEFAULT_PYTHON_VERSION, "role_name"),
-        ("actions/runner", DEFAULT_PYTHON_VERSION, "role_name"),
-        ("actions-runner*", DEFAULT_PYTHON_VERSION, "role_name"),
-        ("", DEFAULT_PYTHON_VERSION, "role_name"),
+        ("r" * 41, DEFAULT_PYTHON_VERSION, "role_name", ROLE_NAME_ERROR),
+        ("actions/runner", DEFAULT_PYTHON_VERSION, "role_name", ROLE_NAME_ERROR),
+        ("actions-runner*", DEFAULT_PYTHON_VERSION, "role_name", ROLE_NAME_ERROR),
+        ("", DEFAULT_PYTHON_VERSION, "role_name", ROLE_NAME_ERROR),
         # null used to fall back to a name_prefix-based role; it can't make
         # actions-runner-instance-<role_name>, so it must be rejected, not crash.
-        (None, DEFAULT_PYTHON_VERSION, "role_name"),
-        # lambda-monitored 2.x only supports the Amazon Linux 2023 runtimes.
-        (DEFAULT_ROLE_NAME, "python3.11", "python_version"),
+        (None, DEFAULT_PYTHON_VERSION, "role_name", ROLE_NAME_ERROR),
+        # lambda-monitored 2.x only supports the Amazon Linux 2023 runtimes. It rejects
+        # python3.11 too, so only PYTHON_VERSION_ERROR shows this module does.
+        (DEFAULT_ROLE_NAME, "python3.11", "python_version", PYTHON_VERSION_ERROR),
     ],
     ids=[
         "role-name-too-long",
@@ -308,17 +316,20 @@ def validation_root(tmp_path_factory) -> str:
     ],
 )
 def test_invalid_input_fails_at_plan(
-    validation_root, role_name, python_version, invalid_variable
+    validation_root, role_name, python_version, invalid_variable, expected_error
 ):
-    """An input that would produce an invalid role name or runtime fails at plan."""
+    """An input that would produce an invalid role name or runtime fails at plan, in this module."""
     _write_validation_root(validation_root, role_name, python_version)
     result = _terraform(["plan", "-input=false", "-no-color"], validation_root)
     output = result.stdout + result.stderr
     LOG.info("terraform plan output:\n%s", output)
+    # Terraform wraps diagnostic messages, so compare with whitespace collapsed.
+    flat_output = " ".join(output.split())
 
     assert result.returncode != 0, output
     assert "Invalid value for variable" in output, output
     assert f"var.{invalid_variable} is" in output, output
+    assert expected_error in flat_output, output
 
 
 @pytest.mark.parametrize(
