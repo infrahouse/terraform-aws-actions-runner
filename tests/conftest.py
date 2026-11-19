@@ -241,6 +241,56 @@ def assert_role_name_prefixes(
     return lambda_role_arns
 
 
+def assert_role_outputs(
+    boto3_session,
+    tf_output: dict,
+    lambda_role_arns: Dict[str, str],
+) -> None:
+    """
+    Fail unless the module's role outputs describe the roles AWS reports.
+
+    ``runner_role_name`` must name the role behind ``runner_role_arn``. Every Lambda
+    execution role must start with ``lambda_role_name_prefix`` and match
+    ``lambda_role_arn_pattern`` (IAM wildcard semantics), and the instance role must
+    match neither, so a caller can write a policy for the Lambdas from the outputs alone.
+
+    :param boto3_session: Boto3 session for the test account.
+    :param tf_output: ``terraform output -json`` of the test root module.
+    :param lambda_role_arns: Lambda execution role ARNs, as returned by
+        :func:`assert_role_name_prefixes`.
+    :raises AssertionError: If an output doesn't match the roles.
+    """
+    iam_client = boto3_session.client("iam")
+    runner_role_arn = tf_output["runner_role_arn"]["value"]
+    runner_role = iam_client.get_role(RoleName=tf_output["runner_role_name"]["value"])[
+        "Role"
+    ]
+    assert runner_role["Arn"] == runner_role_arn, (
+        f"runner_role_name names {runner_role['Arn']}, "
+        f"but runner_role_arn is {runner_role_arn}"
+    )
+
+    prefix = tf_output["lambda_role_name_prefix"]["value"]
+    pattern = tf_output["lambda_role_arn_pattern"]["value"]
+    LOG.info(
+        "lambda_role_name_prefix: %s, lambda_role_arn_pattern: %s", prefix, pattern
+    )
+    for role_arn in lambda_role_arns.values():
+        assert role_arn.split("/")[-1].startswith(
+            prefix
+        ), f"Lambda role {role_arn} does not start with lambda_role_name_prefix {prefix}"
+        assert fnmatchcase(
+            role_arn, pattern
+        ), f"Lambda role {role_arn} does not match lambda_role_arn_pattern {pattern}"
+
+    assert not runner_role["RoleName"].startswith(
+        prefix
+    ), f"Instance role {runner_role_arn} starts with lambda_role_name_prefix {prefix}"
+    assert not fnmatchcase(
+        runner_role_arn, pattern
+    ), f"Instance role {runner_role_arn} matches lambda_role_arn_pattern {pattern}"
+
+
 def assert_lambda_memory_within_limit(
     cloudwatch_client,
     function_name: str,

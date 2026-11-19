@@ -242,6 +242,7 @@ module "actions-runner" {
 | [aws_ec2_instance_type.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/ec2_instance_type) | data source |
 | [aws_iam_policy.ssm](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy) | data source |
 | [aws_iam_policy_document.required_permissions](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
+| [aws_partition.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/partition) | data source |
 | [aws_region.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/region) | data source |
 | [aws_subnet.selected](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/subnet) | data source |
 | [aws_vpc.selected](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/vpc) | data source |
@@ -305,8 +306,11 @@ module "actions-runner" {
 | <a name="output_dashboard_url"></a> [dashboard\_url](#output\_dashboard\_url) | URL of the CloudWatch dashboard the module creates for this runner pool. |
 | <a name="output_deregistration_lambda_name"></a> [deregistration\_lambda\_name](#output\_deregistration\_lambda\_name) | Name of the runner\_deregistration lambda function. |
 | <a name="output_deregistration_log_group"></a> [deregistration\_log\_group](#output\_deregistration\_log\_group) | CloudWatch log group name for the deregistration lambda |
+| <a name="output_lambda_role_arn_pattern"></a> [lambda\_role\_arn\_pattern](#output\_lambda\_role\_arn\_pattern) | ARN pattern that matches this pool's three Lambda execution roles and none of its other roles,<br/>e.g. for an ArnLike condition on aws:PrincipalArn:<br/>arn:<partition>:iam::<account>:role/actions-runner-lambda-<pool>-* |
+| <a name="output_lambda_role_name_prefix"></a> [lambda\_role\_name\_prefix](#output\_lambda\_role\_name\_prefix) | Name prefix shared by this pool's three Lambda execution roles: actions-runner-lambda-<pool>-.<br/>Each role is named <prefix><function>-<suffix>, where <function> is reg, dereg or metric.<br/><pool> stays the same for the life of the pool. Every pool's Lambda roles match actions-runner-lambda-*. |
 | <a name="output_record_metric_lambda_name"></a> [record\_metric\_lambda\_name](#output\_record\_metric\_lambda\_name) | Name of the record\_metric lambda function. |
 | <a name="output_registration_lambda_name"></a> [registration\_lambda\_name](#output\_registration\_lambda\_name) | Name of the runner\_registration lambda function. |
 | <a name="output_registration_token_secret_prefix"></a> [registration\_token\_secret\_prefix](#output\_registration\_token\_secret\_prefix) | The prefix used for storing GitHub Actions runner registration token secrets in AWS Secrets Manager |
-| <a name="output_runner_role_arn"></a> [runner\_role\_arn](#output\_runner\_role\_arn) | An actions runner EC2 instance role ARN. |
+| <a name="output_runner_role_arn"></a> [runner\_role\_arn](#output\_runner\_role\_arn) | ARN of the runner instance role, the role the runner EC2 instances use. |
+| <a name="output_runner_role_name"></a> [runner\_role\_name](#output\_runner\_role\_name) | Name of the runner instance role: actions-runner-instance-<role\_name>.<br/>It never matches actions-runner-lambda-*, the prefix of the module's Lambda roles. |
 <!-- END_TF_DOCS -->

@@ -1,6 +1,35 @@
 output "runner_role_arn" {
-  description = "An actions runner EC2 instance role ARN."
+  description = "ARN of the runner instance role, the role the runner EC2 instances use."
   value       = module.instance-profile.instance_role_arn
+}
+
+output "runner_role_name" {
+  description = <<-EOT
+    Name of the runner instance role: actions-runner-instance-<role_name>.
+    It never matches actions-runner-lambda-*, the prefix of the module's Lambda roles.
+  EOT
+  value       = module.instance-profile.instance_role_name
+}
+
+output "lambda_role_name_prefix" {
+  description = <<-EOT
+    Name prefix shared by this pool's three Lambda execution roles: actions-runner-lambda-<pool>-.
+    Each role is named <prefix><function>-<suffix>, where <function> is reg, dereg or metric.
+    <pool> stays the same for the life of the pool. Every pool's Lambda roles match actions-runner-lambda-*.
+  EOT
+  value       = local.lambda_role_name_prefix
+}
+
+output "lambda_role_arn_pattern" {
+  description = <<-EOT
+    ARN pattern that matches this pool's three Lambda execution roles and none of its other roles,
+    e.g. for an ArnLike condition on aws:PrincipalArn:
+    arn:<partition>:iam::<account>:role/actions-runner-lambda-<pool>-*
+  EOT
+  value = join("", [
+    "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/",
+    "${local.lambda_role_name_prefix}*",
+  ])
 }
 
 output "autoscaling_group_name" {
