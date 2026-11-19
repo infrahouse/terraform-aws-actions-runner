@@ -95,7 +95,7 @@ If you receive SNS alerts about high error rates:
 
 | Name | Source | Version |
 |------|--------|---------|
-| <a name="module_lambda_monitored"></a> [lambda\_monitored](#module\_lambda\_monitored) | registry.infrahouse.com/infrahouse/lambda-monitored/aws | 1.1.0 |
+| <a name="module_lambda_monitored"></a> [lambda\_monitored](#module\_lambda\_monitored) | registry.infrahouse.com/infrahouse/lambda-monitored/aws | 2.2.0 |
 
 ## Resources
 
@@ -123,8 +123,9 @@ If you receive SNS alerts about high error rates:
 | <a name="input_github_credentials"></a> [github\_credentials](#input\_github\_credentials) | A secret and its type to auth in Github. | <pre>object(<br/>    {<br/>      type : string   # Can be either "token" or "pem"<br/>      secret : string # ARN where either is stored<br/>    }<br/>  )</pre> | n/a | yes |
 | <a name="input_github_org_name"></a> [github\_org\_name](#input\_github\_org\_name) | GitHub organization name. | `string` | n/a | yes |
 | <a name="input_lambda_timeout"></a> [lambda\_timeout](#input\_lambda\_timeout) | Time in seconds to let lambda run. | `number` | `900` | no |
-| <a name="input_python_version"></a> [python\_version](#input\_python\_version) | Python version to run lambda on. Must one of https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html | `string` | `"python3.12"` | no |
+| <a name="input_python_version"></a> [python\_version](#input\_python\_version) | Python runtime for the Lambda function: python3.12 or python3.13. terraform-aws-lambda-monitored<br/>validates it, because only the Amazon Linux 2023 runtimes can load the manylinux\_2\_28 wheels it installs. | `string` | `"python3.12"` | no |
 | <a name="input_registration_token_secret_prefix"></a> [registration\_token\_secret\_prefix](#input\_registration\_token\_secret\_prefix) | Secret name prefix that will store a registration token | `string` | n/a | yes |
+| <a name="input_role_name_prefix"></a> [role\_name\_prefix](#input\_role\_name\_prefix) | Name prefix for the Lambda execution role, passed to terraform-aws-lambda-monitored as role\_name\_prefix.<br/>It is used verbatim and Terraform appends a 26-character suffix, so end it with "-".<br/>1 to 38 characters from letters, digits and +=,.@\_-. | `string` | n/a | yes |
 | <a name="input_security_group_ids"></a> [security\_group\_ids](#input\_security\_group\_ids) | List of security group ids where the lambda will be created. | `list(string)` | n/a | yes |
 | <a name="input_subnet_ids"></a> [subnet\_ids](#input\_subnet\_ids) | List of subnet ids where the actions runner instances will be created. | `list(string)` | n/a | yes |
 | <a name="input_tags"></a> [tags](#input\_tags) | A map of tags to assign to resources. | `map(string)` | `{}` | no |
