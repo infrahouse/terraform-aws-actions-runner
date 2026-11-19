@@ -3,6 +3,21 @@ output "runner_role_arn" {
   value       = module.actions-runner.runner_role_arn
 }
 
+output "runner_role_name" {
+  description = "Name of the runner instance role."
+  value       = module.actions-runner.runner_role_name
+}
+
+output "lambda_role_name_prefix" {
+  description = "Name prefix of the pool's Lambda execution roles."
+  value       = module.actions-runner.lambda_role_name_prefix
+}
+
+output "lambda_role_arn_pattern" {
+  description = "ARN pattern that matches the pool's Lambda execution roles."
+  value       = module.actions-runner.lambda_role_arn_pattern
+}
+
 output "registration_token_secret_prefix" {
   description = "The prefix used for storing GitHub Actions runner registration token secrets in AWS Secrets Manager"
   value       = module.actions-runner.registration_token_secret_prefix

@@ -20,6 +20,7 @@ from tests.conftest import (
     assert_lambda_memory_within_limit,
     assert_no_inspector_exclusion_tag,
     assert_role_name_prefixes,
+    assert_role_outputs,
     ensure_runners,
     get_tmp_token,
     invoke_deregistration_sweep,
@@ -124,7 +125,7 @@ def test_module(
         try:
             # Issue #109: a policy must be able to select the Lambda roles by name
             # pattern without also selecting the instance role.
-            assert_role_name_prefixes(
+            lambda_role_arns = assert_role_name_prefixes(
                 boto3_session,
                 aws_region,
                 tf_output["runner_role_arn"]["value"],
@@ -134,6 +135,7 @@ def test_module(
                     "metric": tf_output["record_metric_lambda_name"]["value"],
                 },
             )
+            assert_role_outputs(boto3_session, tf_output, lambda_role_arns)
 
             autoscaling_client = boto3_session.client(
                 "autoscaling", region_name=aws_region
