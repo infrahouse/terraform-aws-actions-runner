@@ -84,7 +84,7 @@ test-migration-keep:  ## Run migration test and keep resources
 	pytest -xvvs \
 		--aws-region=${TEST_REGION} \
 		--test-role-arn=${TEST_ROLE} \
-		-k "token-noble-aws-5" \
+		-k "token-noble-aws-6" \
 		--github-token $(GITHUB_TOKEN) \
 		--keep-after \
 		tests/test_module_migration.py 2>&1 | tee pytest-$(shell date +%Y%m%d-%H%M%S)-output.log
@@ -95,7 +95,7 @@ test-migration-clean:  ## Run migration test and destroy resources
 		--aws-region=${TEST_REGION} \
 		--test-role-arn=${TEST_ROLE} \
 		--github-token $(GITHUB_TOKEN) \
-		-k "token-noble-aws-5" \
+		-k "token-noble-aws-6" \
 		tests/test_module_migration.py 2>&1 | tee pytest-$(shell date +%Y%m%d-%H%M%S)-output.log
 
 #		-k token-noble \
