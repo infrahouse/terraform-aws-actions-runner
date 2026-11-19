@@ -1,9 +1,11 @@
 """
-Test migration from version 3.0.3 to the current version with lambda-monitored module.
+Test upgrades from earlier releases to the current version.
 
-This test ensures that users can smoothly upgrade from v3.0.3 (which uses custom lambda setup)
-to the new version (which uses terraform-aws-lambda-monitored module) without destroying
-and recreating resources.
+- From 3.0.3 (custom Lambda setup) to the terraform-aws-lambda-monitored based version: the moved
+  blocks must carry the deregistration log group over instead of destroying and recreating it.
+- From 4.4.1, the last release before issue #109: the Lambda and instance roles are replaced with
+  ones carrying the new name prefixes, and the runners must roll, so that no runner keeps
+  credentials of the deleted instance role.
 """
 
 import json
@@ -13,6 +15,7 @@ import time
 from os import path as osp, remove
 from shutil import rmtree
 from textwrap import dedent
+from typing import Set
 
 import boto3
 import pytest
@@ -23,10 +26,32 @@ from tests.conftest import (
     LOG,
     TERRAFORM_ROOT_DIR,
     GITHUB_ORG_NAME,
+    assert_role_name_prefixes,
     ensure_runners,
     get_tmp_token,
     GH_APP_ID,
 )
+
+
+def in_service_instance_ids(autoscaling_client, asg_name: str) -> Set[str]:
+    """
+    Return the ids of the ASG's instances that are in service.
+
+    Instances in a ``Terminating*`` state are on their way out and are not counted.
+
+    :param autoscaling_client: Boto3 Auto Scaling client.
+    :param asg_name: Auto Scaling group name.
+    :return: Instance ids whose lifecycle state is ``InService``.
+    """
+    response = autoscaling_client.describe_auto_scaling_groups(
+        AutoScalingGroupNames=[asg_name]
+    )
+    return {
+        instance["InstanceId"]
+        for group in response["AutoScalingGroups"]
+        for instance in group["Instances"]
+        if instance["LifecycleState"] == "InService"
+    }
 
 
 def write_main_tf(terraform_module_dir, source, version=None):
@@ -70,6 +95,9 @@ def write_main_tf(terraform_module_dir, source, version=None):
                 """))
 
 
+@pytest.mark.parametrize(
+    "from_version", ["3.0.3", "4.4.1"], ids=["from-3.0.3", "from-4.4.1"]
+)
 @pytest.mark.parametrize("aws_provider_version", ["~> 5.62"], ids=["aws-5"])
 @pytest.mark.parametrize(
     "secret_type, ubuntu_codename",
@@ -88,17 +116,19 @@ def test_module_migration(
     aws_region,
     boto3_session,
     aws_provider_version,
+    from_version,
 ):
     """
-    Test migration from v3.0.3 to current version.
+    Test the upgrade from ``from_version`` to the current version.
 
-    1. Deploy v3.0.3 (old version without lambda-monitored)
-    2. Verify log group exists
-    3. Write test message to log group
-    4. Upgrade to current version (with lambda-monitored and moved blocks)
-    5. Verify migration is smooth (no destroy/recreate)
-    6. Verify log group still exists with same ARN
-    7. Verify test message persists (data was preserved)
+    1. Deploy ``from_version``
+    2. Verify the deregistration log group exists and write a test message to it
+    3. Upgrade to the current version
+    4. Verify the log group has the same ARN and still holds the test message
+    5. Verify the runners come back online after the instance refresh
+    6. Verify no instance from step 1 is still in service: the instance role was replaced,
+       and runners launched with the old role hold credentials of a deleted role
+    7. Verify the instance and Lambda roles AWS reports carry the issue #109 prefixes
     """
     subnet_public_ids = service_network["subnet_public_ids"]["value"]
     subnet_private_ids = service_network["subnet_private_ids"]["value"]
@@ -168,18 +198,18 @@ def test_module_migration(
                 """)
         )
 
-    # PHASE 1: Deploy old version (3.0.3)
+    # PHASE 1: Deploy the old version
     LOG.info("=" * 80)
-    LOG.info("PHASE 1: Deploying version 3.0.3 (old version)")
+    LOG.info("PHASE 1: Deploying version %s (old version)", from_version)
     LOG.info("=" * 80)
 
     # Generate main.tf for Phase 1 with registry source
     write_main_tf(
         terraform_module_dir,
         source="registry.infrahouse.com/infrahouse/actions-runner/aws",
-        version="3.0.3",
+        version=from_version,
     )
-    LOG.info("Generated main.tf for v3.0.3 from registry")
+    LOG.info("Generated main.tf for %s from registry", from_version)
 
     with terraform_apply(
         terraform_module_dir,
@@ -190,6 +220,12 @@ def test_module_migration(
 
         # Construct log group name from ASG name (v3.0.3 pattern)
         asg_name = tf_output["autoscaling_group_name"]["value"]
+
+        autoscaling_client = boto3_session.client("autoscaling", region_name=aws_region)
+        old_instance_ids = in_service_instance_ids(autoscaling_client, asg_name)
+        LOG.info("Instances in service before the upgrade: %s", old_instance_ids)
+        assert old_instance_ids, f"{from_version} has no instances in service"
+
         log_group_name = f"/aws/lambda/{asg_name}_deregistration"
         LOG.info(f"Deregistration log group (constructed): {log_group_name}")
 
@@ -224,9 +260,9 @@ def test_module_migration(
         )
         LOG.info(f"✓ Wrote test message to log group: {test_message}")
 
-    # PHASE 2: Upgrade to current version (with lambda-monitored)
+    # PHASE 2: Upgrade to the current version
     LOG.info("=" * 80)
-    LOG.info("PHASE 2: Upgrading to current version (with lambda-monitored)")
+    LOG.info("PHASE 2: Upgrading from %s to the current version", from_version)
     LOG.info("=" * 80)
 
     # Generate main.tf for Phase 2 with local source
@@ -277,15 +313,33 @@ def test_module_migration(
         # Verify runners work
         gha = GitHubActions(GitHubAuth(github_token, GITHUB_ORG_NAME))
         try:
-            autoscaling_client = boto3_session.client(
-                "autoscaling", region_name=aws_region
-            )
             ensure_runners(
                 gha,
                 aws_region,
                 autoscaling_client,
                 timeout_time=900 + asg_max_size * 900,
                 test_role_arn=test_role_arn,
+            )
+
+            # ensure_runners waited for the instance refresh. A runner launched before
+            # the upgrade holds credentials of the instance role that was just deleted.
+            new_instance_ids = in_service_instance_ids(autoscaling_client, asg_name)
+            LOG.info("Instances in service after the upgrade: %s", new_instance_ids)
+            assert not old_instance_ids & new_instance_ids, (
+                f"Instances {sorted(old_instance_ids & new_instance_ids)} were launched by "
+                f"{from_version} with the old instance role and are still in service: "
+                "the upgrade did not roll the runners."
+            )
+
+            assert_role_name_prefixes(
+                boto3_session,
+                aws_region,
+                migrated_output["runner_role_arn"]["value"],
+                {
+                    "reg": f"{asg_name}_registration",
+                    "dereg": f"{asg_name}_deregistration",
+                    "metric": f"{asg_name}_record_metric",
+                },
             )
         finally:
             if not keep_after:
