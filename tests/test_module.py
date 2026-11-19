@@ -125,17 +125,19 @@ def test_module(
         try:
             # Issue #109: a policy must be able to select the Lambda roles by name
             # pattern without also selecting the instance role.
+            asg_name = tf_output["autoscaling_group_name"]["value"]
             lambda_role_arns = assert_role_name_prefixes(
                 boto3_session,
                 aws_region,
                 tf_output["runner_role_arn"]["value"],
+                asg_name,
                 {
                     "reg": tf_output["registration_lambda_name"]["value"],
                     "dereg": tf_output["deregistration_lambda_name"]["value"],
                     "metric": tf_output["record_metric_lambda_name"]["value"],
                 },
             )
-            assert_role_outputs(boto3_session, tf_output, lambda_role_arns)
+            assert_role_outputs(boto3_session, tf_output, asg_name, lambda_role_arns)
 
             autoscaling_client = boto3_session.client(
                 "autoscaling", region_name=aws_region
