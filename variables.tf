@@ -236,9 +236,22 @@ variable "puppet_root_directory" {
 }
 
 variable "python_version" {
-  description = "Python version to run lambda on. Must be one of https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html"
+  description = <<-EOT
+    Python runtime for the module's Lambda functions: python3.12 or python3.13.
+    terraform-aws-lambda-monitored packages manylinux_2_28 wheels, which only the Amazon Linux 2023
+    runtimes can load, so earlier runtimes (python3.11 and older, Amazon Linux 2) are not supported.
+    See https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html
+  EOT
   type        = string
   default     = "python3.12"
+
+  validation {
+    condition     = contains(["python3.12", "python3.13"], var.python_version)
+    error_message = <<-EOT
+      python_version must be python3.12 or python3.13, the Amazon Linux 2023 Lambda runtimes that can load
+      the manylinux_2_28 wheels terraform-aws-lambda-monitored installs. Got ${jsonencode(var.python_version)}.
+    EOT
+  }
 }
 
 variable "role_name" {

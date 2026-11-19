@@ -47,7 +47,10 @@ variable "lambda_timeout" {
 }
 
 variable "python_version" {
-  description = "Python version to run lambda on. Must one of https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html"
+  description = <<-EOT
+    Python runtime for the Lambda function: python3.12 or python3.13. terraform-aws-lambda-monitored
+    validates it, because only the Amazon Linux 2023 runtimes can load the manylinux_2_28 wheels it installs.
+  EOT
   type        = string
   default     = "python3.12"
 }
