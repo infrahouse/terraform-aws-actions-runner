@@ -15,7 +15,7 @@ module "instance-profile" {
   version      = "2.0.0"
   permissions  = data.aws_iam_policy_document.required_permissions.json
   profile_name = "actions-runner-${random_string.profile-suffix.result}"
-  role_name    = var.role_name
+  role_name    = local.instance_role_name
   extra_policies = merge(
     {
       ssm : data.aws_iam_policy.ssm.arn

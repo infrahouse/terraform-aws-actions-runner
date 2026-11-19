@@ -44,6 +44,9 @@ locals {
   deregistration_role_name_prefix = "${local.lambda_role_name_prefix}dereg-"
   record_metric_role_name_prefix  = "${local.lambda_role_name_prefix}metric-"
 
+  # The fixed prefix keeps any role_name out of the actions-runner-lambda-* namespace above.
+  instance_role_name = "actions-runner-instance-${var.role_name}"
+
   registration_token_secret_prefix = "GH-reg-token-${random_string.reg_token_suffix.result}"
   registration_hookname            = "registration"
   deregistration_hookname          = "deregistration"
