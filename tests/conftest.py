@@ -1,8 +1,10 @@
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
+from fnmatch import fnmatchcase
 from time import sleep
-from typing import Optional
+from typing import Dict, Optional
 
 import pytest
 
@@ -23,6 +25,16 @@ GITHUB_ORG_NAME = "infrahouse"
 TERRAFORM_ROOT_DIR = "test_data"
 GH_APP_ID = 1016363
 INSPECTOR_EXCLUSION_TAG = "InspectorEc2Exclusion"
+
+# Role name prefixes from issue #109. A policy that selects principals by role name
+# (e.g. ArnLike on aws:PrincipalArn) relies on these, so the tests check them against
+# the roles AWS reports rather than against Terraform strings.
+INSTANCE_ROLE_PREFIX = "actions-runner-instance-"
+LAMBDA_ROLE_PREFIX = "actions-runner-lambda-"
+LAMBDA_ROLE_PATTERN = "actions-runner-lambda-*"
+LAMBDA_ROLE_NAME_RE = re.compile(
+    r"^actions-runner-lambda-(?P<pool>[^-]+)-(?P<function>[^-]+)-"
+)
 
 # Maximum LambdaInsights memory_utilization (percent) we tolerate in tests.
 # The prod alarm fires at 80%; the test margin is tighter so regressions are
@@ -152,6 +164,81 @@ def assert_no_inspector_exclusion_tag(
             f"Instance {instance.instance_id} is a registered runner but still carries "
             f"{leftover}, so Amazon Inspector will not scan it."
         )
+
+
+def assert_role_name_prefixes(
+    boto3_session,
+    aws_region: str,
+    runner_role_arn: str,
+    lambda_functions: Dict[str, str],
+) -> Dict[str, str]:
+    """
+    Fail unless the instance role and the Lambda execution roles carry the issue #109 prefixes.
+
+    The instance role must start with ``actions-runner-instance-``. Each Lambda's execution
+    role, as the Lambda service reports it, must be named
+    ``actions-runner-lambda-<pool>-<function>-<suffix>``: the three roles share ``<pool>`` and
+    each carries its own ``<function>`` token. The pattern ``actions-runner-lambda-*`` must match
+    every Lambda role and must not match the instance role, so a policy can grant the Lambdas
+    something by pattern without granting it to the runners.
+
+    :param boto3_session: Boto3 session for the test account.
+    :param aws_region: AWS region the Lambda functions live in.
+    :param runner_role_arn: ARN of the instance role (the module's ``runner_role_arn`` output).
+    :param lambda_functions: Lambda function name by the ``<function>`` token its role must
+        carry, e.g. ``{"reg": "<asg>_registration"}``.
+    :return: Lambda execution role ARN by ``<function>`` token, as IAM reports it.
+    :raises AssertionError: If any role name breaks the rules above.
+    """
+    iam_client = boto3_session.client("iam")
+    lambda_client = boto3_session.client("lambda", region_name=aws_region)
+
+    instance_role = iam_client.get_role(RoleName=runner_role_arn.split("/")[-1])["Role"]
+    instance_role_name = instance_role["RoleName"]
+    LOG.info("Instance role: %s", instance_role["Arn"])
+    assert instance_role_name.startswith(
+        INSTANCE_ROLE_PREFIX
+    ), f"Instance role {instance_role_name} does not start with {INSTANCE_ROLE_PREFIX}"
+    assert not fnmatchcase(instance_role_name, LAMBDA_ROLE_PATTERN), (
+        f"Instance role {instance_role_name} matches {LAMBDA_ROLE_PATTERN}, "
+        "so a policy meant for the Lambdas would also cover the runners."
+    )
+
+    lambda_role_arns = {}
+    pools = set()
+    for token, function_name in lambda_functions.items():
+        role_arn = lambda_client.get_function(FunctionName=function_name)[
+            "Configuration"
+        ]["Role"]
+        role = iam_client.get_role(RoleName=role_arn.split("/")[-1])["Role"]
+        role_name = role["RoleName"]
+        LOG.info("Lambda %s runs as %s", function_name, role["Arn"])
+
+        assert role_name.startswith(LAMBDA_ROLE_PREFIX), (
+            f"Lambda {function_name} runs as {role_name}, "
+            f"which does not start with {LAMBDA_ROLE_PREFIX}"
+        )
+        assert fnmatchcase(
+            role_name, LAMBDA_ROLE_PATTERN
+        ), f"Lambda {function_name} role {role_name} does not match {LAMBDA_ROLE_PATTERN}"
+        match = LAMBDA_ROLE_NAME_RE.match(role_name)
+        assert match, (
+            f"Lambda {function_name} role {role_name} is not named "
+            "actions-runner-lambda-<pool>-<function>-<suffix>"
+        )
+        # Each token is a distinct dict key, so matching it also proves the three
+        # roles differ in the <function> part.
+        assert match.group("function") == token, (
+            f"Lambda {function_name} role {role_name} carries function token "
+            f"{match.group('function')!r}, expected {token!r}"
+        )
+        pools.add(match.group("pool"))
+        lambda_role_arns[token] = role["Arn"]
+
+    assert (
+        len(pools) == 1
+    ), f"The Lambda roles of one pool must share the <pool> part, got {sorted(pools)}"
+    return lambda_role_arns
 
 
 def assert_lambda_memory_within_limit(

@@ -1,9 +1,12 @@
 import json
+import os
 import platform
+import subprocess
 import sys
 from os import path as osp, remove
 from shutil import rmtree
 from textwrap import dedent
+from typing import List
 
 import boto3
 import pytest
@@ -16,6 +19,7 @@ from tests.conftest import (
     GITHUB_ORG_NAME,
     assert_lambda_memory_within_limit,
     assert_no_inspector_exclusion_tag,
+    assert_role_name_prefixes,
     ensure_runners,
     get_tmp_token,
     invoke_deregistration_sweep,
@@ -118,6 +122,19 @@ def test_module(
         LOG.info("%s", json.dumps(tf_output, indent=4))
         gha = GitHubActions(GitHubAuth(github_token, GITHUB_ORG_NAME))
         try:
+            # Issue #109: a policy must be able to select the Lambda roles by name
+            # pattern without also selecting the instance role.
+            assert_role_name_prefixes(
+                boto3_session,
+                aws_region,
+                tf_output["runner_role_arn"]["value"],
+                {
+                    "reg": tf_output["registration_lambda_name"]["value"],
+                    "dereg": tf_output["deregistration_lambda_name"]["value"],
+                    "metric": tf_output["record_metric_lambda_name"]["value"],
+                },
+            )
+
             autoscaling_client = boto3_session.client(
                 "autoscaling", region_name=aws_region
             )
@@ -182,3 +199,129 @@ def test_module(
 
                 for runner in gha.find_runners_by_label("awesome"):
                     gha.deregister_runner(runner)
+
+
+# The input validation tests below need no AWS account: Terraform rejects an invalid
+# literal module argument while validating the configuration, which `terraform plan`
+# does before it configures any provider. The environment is stripped of AWS settings
+# so that a missing validation fails the test instead of reaching an account.
+REPO_ROOT = osp.abspath(osp.join(osp.dirname(__file__), ".."))
+DEFAULT_ROLE_NAME = "actions-runner"
+DEFAULT_PYTHON_VERSION = "python3.12"
+
+
+def _terraform(args: List[str], cwd: str) -> subprocess.CompletedProcess:
+    """
+    Run terraform in ``cwd`` with no AWS credentials or configuration available.
+
+    :param args: Terraform arguments, e.g. ``["plan", "-no-color"]``.
+    :param cwd: Directory with the root module.
+    :return: The completed process, with stdout and stderr captured as text.
+    """
+    env = {
+        key: value for key, value in os.environ.items() if not key.startswith("AWS_")
+    }
+    env.update(
+        {
+            "AWS_CONFIG_FILE": os.devnull,
+            "AWS_SHARED_CREDENTIALS_FILE": os.devnull,
+            "AWS_EC2_METADATA_DISABLED": "true",
+        }
+    )
+    return subprocess.run(
+        ["terraform", *args],
+        cwd=cwd,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def _write_validation_root(root_dir: str, role_name: str, python_version: str) -> None:
+    """
+    Write a root module that calls this module with the given inputs as literals.
+
+    The values are literals, not root variables, so that Terraform validates them
+    before planning. The other required inputs are placeholders that are never used.
+
+    :param root_dir: Directory to write ``main.tf`` into.
+    :param role_name: Value for the module's ``role_name`` input.
+    :param python_version: Value for the module's ``python_version`` input.
+    """
+    with open(osp.join(root_dir, "main.tf"), "w") as fp:
+        fp.write(dedent(f"""
+                module "actions-runner" {{
+                  source                  = "{osp.relpath(REPO_ROOT, root_dir)}"
+                  environment             = "development"
+                  github_org_name         = "{GITHUB_ORG_NAME}"
+                  github_token_secret_arn = "placeholder"
+                  subnet_ids              = ["subnet-placeholder"]
+                  alarm_emails            = ["placeholder@example.com"]
+                  role_name               = {json.dumps(role_name)}
+                  python_version          = {json.dumps(python_version)}
+                }}
+                """))
+
+
+@pytest.fixture(scope="module")
+def validation_root(tmp_path_factory) -> str:
+    """
+    Initialize a root module that calls this module, once for all validation tests.
+
+    :return: Path to the initialized root module directory.
+    """
+    root_dir = str(tmp_path_factory.mktemp("variable-validation"))
+    _write_validation_root(root_dir, DEFAULT_ROLE_NAME, DEFAULT_PYTHON_VERSION)
+    result = _terraform(["init", "-input=false", "-no-color"], root_dir)
+    assert result.returncode == 0, result.stdout + result.stderr
+    return root_dir
+
+
+@pytest.mark.parametrize(
+    "role_name, python_version, invalid_variable",
+    [
+        # actions-runner-instance- is 24 characters, so 41 makes a 65-character role name.
+        ("r" * 41, DEFAULT_PYTHON_VERSION, "role_name"),
+        ("actions/runner", DEFAULT_PYTHON_VERSION, "role_name"),
+        ("actions-runner*", DEFAULT_PYTHON_VERSION, "role_name"),
+        ("", DEFAULT_PYTHON_VERSION, "role_name"),
+        # lambda-monitored 2.x only supports the Amazon Linux 2023 runtimes.
+        (DEFAULT_ROLE_NAME, "python3.11", "python_version"),
+    ],
+    ids=[
+        "role-name-too-long",
+        "role-name-slash",
+        "role-name-wildcard",
+        "role-name-empty",
+        "python-3.11",
+    ],
+)
+def test_invalid_input_fails_at_plan(
+    validation_root, role_name, python_version, invalid_variable
+):
+    """An input that would produce an invalid role name or runtime fails at plan."""
+    _write_validation_root(validation_root, role_name, python_version)
+    result = _terraform(["plan", "-input=false", "-no-color"], validation_root)
+    output = result.stdout + result.stderr
+    LOG.info("terraform plan output:\n%s", output)
+
+    assert result.returncode != 0, output
+    assert "Invalid value for variable" in output, output
+    assert f"var.{invalid_variable} is" in output, output
+
+
+@pytest.mark.parametrize(
+    "role_name, python_version",
+    [
+        # The longest role_name that keeps actions-runner-instance-<role_name> within 64.
+        ("r" * 40, DEFAULT_PYTHON_VERSION),
+        ("Runner_1+=,.@-x", "python3.13"),
+    ],
+    ids=["role-name-40-chars", "role-name-all-iam-characters"],
+)
+def test_valid_input_passes_validation(validation_root, role_name, python_version):
+    """Inputs at the edge of what IAM and Lambda accept are not rejected."""
+    _write_validation_root(validation_root, role_name, python_version)
+    result = _terraform(["validate", "-no-color"], validation_root)
+    assert result.returncode == 0, result.stdout + result.stderr
