@@ -3,6 +3,7 @@ Test upgrades from earlier releases to the current version.
 
 - From 3.0.3 (custom Lambda setup) to the terraform-aws-lambda-monitored based version: the moved
   blocks must carry the deregistration log group over instead of destroying and recreating it.
+  Skipped: 3.0.3 no longer bootstraps a runner (see the skip reason).
 - From 4.4.1, the last release before issue #109: the Lambda and instance roles are replaced with
   ones carrying the new name prefixes, and the runners must roll, so that no runner keeps
   credentials of the deleted instance role.
@@ -96,7 +97,20 @@ def write_main_tf(terraform_module_dir, source, version=None):
 
 
 @pytest.mark.parametrize(
-    "from_version", ["3.0.3", "4.4.1"], ids=["from-3.0.3", "from-4.4.1"]
+    "from_version",
+    [
+        pytest.param(
+            "3.0.3",
+            id="from-3.0.3",
+            marks=pytest.mark.skip(
+                reason="3.0.3 can't bootstrap a runner any more: its cloud-init 2.2.2 checks the InfraHouse "
+                "noble apt key against a hard-coded fingerprint, and that key has been rotated. The repository "
+                "isn't added, so puppet-code and infrahouse-toolkit don't install and the bootstrap hook "
+                "times out."
+            ),
+        ),
+        pytest.param("4.4.1", id="from-4.4.1"),
+    ],
 )
 @pytest.mark.parametrize("aws_provider_version", ["~> 5.62"], ids=["aws-5"])
 @pytest.mark.parametrize(
