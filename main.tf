@@ -60,6 +60,13 @@ module "userdata" {
     registration_token_secret_prefix : local.registration_token_secret_prefix
     bootstrap_hookname : local.bootstrap_hookname
     deregistration_hookname : local.deregistration_hookname
+    # Also what makes replacing the instance role roll the runners: the instance profile keeps its
+    # name and ARN, so without this fact the launch template wouldn't change. Running instances keep
+    # the old role's credentials, and AWS says a role swapped into an instance profile can take up
+    # to an hour to reach them, by when the old role is deleted. A new user data makes a new launch
+    # template version, and the ASG's instance refresh replaces the runners. The ASG depends on the
+    # instance profile, so the refresh starts only after the profile holds the new role.
+    instance_role_name : local.instance_role_name
   }
   # Signal the bootstrap lifecycle hook from the cloud-init wrapper so that any failure in the
   # runcmd chain (puppet, package installs, consumer post_runcmd) results in ABANDON rather than
