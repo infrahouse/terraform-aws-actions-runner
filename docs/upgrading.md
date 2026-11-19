@@ -29,6 +29,10 @@ terraform-aws-lambda-monitored 2.2.0.
 
 - **The three Lambda execution roles are replaced.** Each Lambda function is updated in place to use its new role.
   Function names, log groups and alarms don't change.
+- **The Lambda packages are rebuilt and re-uploaded.** terraform-aws-lambda-monitored puts its own version into each
+  package's hash, so moving from 1.1.1 to 2.2.0 rebuilds the three deployment packages (resolving their dependencies
+  again) and uploads them under new S3 keys. The same in-place update that gives each function its new role also
+  deploys this new code.
 - **The instance role is replaced, and the instance profile's role changes.** The instance profile keeps its name
   and ARN. Terraform removes the old role from the profile and deletes it, then creates the new role and adds it to
   the profile.
