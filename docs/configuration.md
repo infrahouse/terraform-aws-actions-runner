@@ -116,7 +116,7 @@ extra_repos = {
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `python_version` | string | `"python3.12"` | Lambda Python runtime |
+| `python_version` | string | `"python3.12"` | Lambda Python runtime: `python3.12` or `python3.13` |
 | `lambda_subnet_ids` | list(string) | `null` | Lambda VPC subnets. Default: `subnet_ids` |
 | `cloudwatch_log_group_retention` | number | `365` | Log retention in days |
 | `error_rate_threshold` | number | `10` | Error rate % for alerting |
@@ -125,9 +125,13 @@ extra_repos = {
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `role_name` | string | `"actions-runner"` | IAM role name for instances |
+| `role_name` | string | `"actions-runner"` | Instance role suffix: the role is `actions-runner-instance-<role_name>` |
 | `extra_policies` | map(string) | `{}` | Additional IAM policy ARNs |
 | `extra_instance_profile_permissions` | string | `null` | Additional IAM policy JSON |
+
+`role_name` must be 1 to 40 characters from letters, digits and `+=,.@_-`, so the full role name fits IAM's
+64-character limit. Role names are unique per account: give each runner pool in an account its own `role_name`.
+See [Architecture → IAM role naming](architecture.md#iam-role-naming).
 
 ## Networking
 
@@ -158,6 +162,9 @@ extra_repos = {
 | `deregistration_log_group` | CloudWatch log group for deregistration Lambda |
 | `registration_token_secret_prefix` | Prefix for runner registration secrets |
 | `runner_role_arn` | IAM role ARN for runner instances |
+| `runner_role_name` | Instance role name, `actions-runner-instance-<role_name>` |
+| `lambda_role_name_prefix` | Name prefix of the pool's Lambda roles, `actions-runner-lambda-<pool>-` |
+| `lambda_role_arn_pattern` | `ArnLike` pattern that matches the pool's Lambda roles only |
 
 ## Complete Example
 

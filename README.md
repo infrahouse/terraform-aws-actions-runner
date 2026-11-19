@@ -31,6 +31,13 @@ Self-hosted runners offer several advantages over GitHub-hosted runners:
 
 ## What's New
 
+- **v5.0.0 — Distinct IAM role name prefixes (#109):**
+    - **Breaking:** the instance role is now `actions-runner-instance-<role_name>` and the Lambda roles
+      `actions-runner-lambda-<pool>-<function>-…`, so a policy can select the Lambdas by name pattern without the
+      runners. Upgrading replaces the roles and rolls the runners.
+    - **Breaking:** `python_version` accepts only `python3.12` and `python3.13` (terraform-aws-lambda-monitored 2.2.0).
+    - **Breaking:** `role_name` is validated (1 to 40 characters from `[\w+=,.@-]`) and can't be `null`.
+    - New outputs `runner_role_name`, `lambda_role_name_prefix` and `lambda_role_arn_pattern`.
 - **v4.0.0 — Unified alarm notification channel (#93):**
     - The module now **always** creates its own SNS topic for alarms and subscribes every address in `alarm_emails`. Previously, EC2 CPU alarms were silently disabled when callers set only `alarm_emails` and not the (optional, defaulted-null) `sns_topic_alarm_arn`, resulting in EC2 instances reported as unmonitored.
     - **Breaking:** `sns_topic_alarm_arn` (singular, optional) is replaced by `alarm_topic_arns` (list, default `[]`). Callers upgrading who previously set `sns_topic_alarm_arn = "<arn>"` should rename to `alarm_topic_arns = ["<arn>"]`. After the rename, the module creates its own topic **and** fans out to the provided ARNs — strictly more coverage.
@@ -60,6 +67,12 @@ Self-hosted runners offer several advantages over GitHub-hosted runners:
     - Orphaned runners are now automatically deregistered.
 
 ## Migration Guide
+
+### Upgrading to v5.0.0 (IAM role name prefixes)
+
+The roles are replaced and the runners roll. Policies that match the old role names must be updated, `role_name`
+can't be `null`, and `python_version` must be `python3.12` or `python3.13`. See the
+[upgrade guide](https://infrahouse.github.io/terraform-aws-actions-runner/upgrading/) for what changes and what to do.
 
 ### Upgrading to v4.0.0 (Unified Alarm Topic)
 

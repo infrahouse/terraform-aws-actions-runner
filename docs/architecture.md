@@ -166,6 +166,28 @@ Each Lambda has scoped permissions:
 - Deregistration: SSM commands, Secrets Manager delete, GitHub API
 - Record Metric: GitHub API read, CloudWatch put metric
 
+### IAM Role Naming
+
+The module's roles have distinct, predictable name prefixes, so a policy can select one kind by name pattern
+(for example `ArnLike` on `aws:PrincipalArn`) without the other:
+
+| Role | Name |
+|------|------|
+| Instance role | `actions-runner-instance-<role_name>` |
+| Registration Lambda | `actions-runner-lambda-<pool>-reg-<suffix>` |
+| Deregistration Lambda | `actions-runner-lambda-<pool>-dereg-<suffix>` |
+| Record-metric Lambda | `actions-runner-lambda-<pool>-metric-<suffix>` |
+
+- `<pool>` is the random 6-character suffix of the ASG name. It stays the same for the life of the pool, including
+  when the launch template is replaced.
+- `<suffix>` is the 26-character suffix Terraform appends to a `name_prefix`.
+- `actions-runner-lambda-*` matches every pool's Lambda roles and no instance role; the
+  `lambda_role_arn_pattern` output matches this pool's Lambda roles only.
+
+Changing `role_name` replaces the instance role. The instance role name is passed to the instances as the
+`instance_role_name` Puppet fact, so the change also rolls the runners: a running instance can keep the credentials
+of a role swapped out of its instance profile for up to an hour.
+
 ### Network
 
 - Runners in private subnets with NAT gateway

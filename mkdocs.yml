@@ -44,6 +44,7 @@ nav:
   - Monitoring: monitoring.md
   - Examples: examples.md
   - Troubleshooting: troubleshooting.md
+  - Upgrading: upgrading.md
   - Comparison: comparison.md
 
 markdown_extensions:
