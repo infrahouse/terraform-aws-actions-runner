@@ -248,16 +248,30 @@ variable "python_version" {
   validation {
     condition     = contains(["python3.12", "python3.13"], var.python_version)
     error_message = <<-EOT
-      python_version must be python3.12 or python3.13, the Amazon Linux 2023 Lambda runtimes that can load
-      the manylinux_2_28 wheels terraform-aws-lambda-monitored installs. Got ${jsonencode(var.python_version)}.
+      python_version must be python3.12 or python3.13. Got ${jsonencode(var.python_version)}.
+      Only the Amazon Linux 2023 runtimes can load the manylinux_2_28 wheels terraform-aws-lambda-monitored installs.
     EOT
   }
 }
 
 variable "role_name" {
-  description = "IAM role name that will be created and used by EC2 instances"
+  description = <<-EOT
+    Suffix of the IAM role the runner instances use. The module names the role
+    actions-runner-instance-<role_name>, so the instance role never matches actions-runner-lambda-*,
+    the prefix of this module's Lambda roles. Role names are unique per account, so give each runner pool
+    in an account its own role_name. 1 to 40 characters from letters, digits and +=,.@_-, which keeps
+    the full name within IAM's 64-character limit. Changing it replaces the instance role.
+  EOT
   type        = string
   default     = "actions-runner"
+
+  validation {
+    condition     = var.role_name == null ? false : can(regex("^[\\w+=,.@-]{1,40}$", var.role_name))
+    error_message = <<-EOT
+      role_name must be a string of 1 to 40 letters, digits or +=,.@_- characters. Got ${jsonencode(var.role_name)}.
+      The instance role is named actions-runner-instance-<role_name>, and IAM role names are at most 64 characters.
+    EOT
+  }
 }
 
 variable "root_volume_size" {
