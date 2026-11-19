@@ -166,10 +166,25 @@ def assert_no_inspector_exclusion_tag(
         )
 
 
+def asg_pool(asg_name: str) -> str:
+    """
+    Return the ``<pool>`` part the Lambda role names of an ASG must carry.
+
+    It is the random suffix after the ASG name's last ``-``. Unlike the rest of the ASG
+    name, which comes from the launch template's timestamped name, it stays the same for
+    the life of the pool.
+
+    :param asg_name: Name of the pool's autoscaling group.
+    :return: The ``<pool>`` part.
+    """
+    return asg_name.rsplit("-", 1)[-1]
+
+
 def assert_role_name_prefixes(
     boto3_session,
     aws_region: str,
     runner_role_arn: str,
+    asg_name: str,
     lambda_functions: Dict[str, str],
 ) -> Dict[str, str]:
     """
@@ -177,14 +192,17 @@ def assert_role_name_prefixes(
 
     The instance role must start with ``actions-runner-instance-``. Each Lambda's execution
     role, as the Lambda service reports it, must be named
-    ``actions-runner-lambda-<pool>-<function>-<suffix>``: the three roles share ``<pool>`` and
-    each carries its own ``<function>`` token. The pattern ``actions-runner-lambda-*`` must match
-    every Lambda role and must not match the instance role, so a policy can grant the Lambdas
-    something by pattern without granting it to the runners.
+    ``actions-runner-lambda-<pool>-<function>-<suffix>``, where ``<pool>`` is the random suffix
+    of the ASG name (see :func:`asg_pool`) and ``<function>`` is the role's own token. The
+    pattern ``actions-runner-lambda-*`` must match every Lambda role and must not match the
+    instance role, so a policy can grant the Lambdas something by pattern without granting it
+    to the runners.
 
     :param boto3_session: Boto3 session for the test account.
     :param aws_region: AWS region the Lambda functions live in.
     :param runner_role_arn: ARN of the instance role (the module's ``runner_role_arn`` output).
+    :param asg_name: Name of the pool's autoscaling group. After an upgrade, pass the name
+        from before it, so the check also proves the pool kept its ``<pool>``.
     :param lambda_functions: Lambda function name by the ``<function>`` token its role must
         carry, e.g. ``{"reg": "<asg>_registration"}``.
     :return: Lambda execution role ARN by ``<function>`` token, as IAM reports it.
@@ -204,8 +222,8 @@ def assert_role_name_prefixes(
         "so a policy meant for the Lambdas would also cover the runners."
     )
 
+    pool = asg_pool(asg_name)
     lambda_role_arns = {}
-    pools = set()
     for token, function_name in lambda_functions.items():
         role_arn = lambda_client.get_function(FunctionName=function_name)[
             "Configuration"
@@ -232,30 +250,36 @@ def assert_role_name_prefixes(
             f"Lambda {function_name} role {role_name} carries function token "
             f"{match.group('function')!r}, expected {token!r}"
         )
-        pools.add(match.group("pool"))
+        # Every role carrying the ASG's suffix also proves the three share <pool>.
+        assert match.group("pool") == pool, (
+            f"Lambda {function_name} role {role_name} carries pool {match.group('pool')!r}, "
+            f"expected {pool!r}, the random suffix of ASG {asg_name}"
+        )
         lambda_role_arns[token] = role["Arn"]
 
-    assert (
-        len(pools) == 1
-    ), f"The Lambda roles of one pool must share the <pool> part, got {sorted(pools)}"
     return lambda_role_arns
 
 
 def assert_role_outputs(
     boto3_session,
     tf_output: dict,
+    asg_name: str,
     lambda_role_arns: Dict[str, str],
 ) -> None:
     """
     Fail unless the module's role outputs describe the roles AWS reports.
 
-    ``runner_role_name`` must name the role behind ``runner_role_arn``. Every Lambda
-    execution role must start with ``lambda_role_name_prefix`` and match
-    ``lambda_role_arn_pattern`` (IAM wildcard semantics), and the instance role must
-    match neither, so a caller can write a policy for the Lambdas from the outputs alone.
+    ``runner_role_name`` must name the role behind ``runner_role_arn``.
+    ``lambda_role_name_prefix`` must be ``actions-runner-lambda-<pool>-`` for this pool's
+    ``<pool>`` (see :func:`asg_pool`), and ``lambda_role_arn_pattern`` must end with
+    ``:role/<that prefix>*``, so that neither covers another pool. Every Lambda execution
+    role must start with the prefix and match the pattern (IAM wildcard semantics), and the
+    instance role must match neither, so a caller can write a policy for the Lambdas from
+    the outputs alone.
 
     :param boto3_session: Boto3 session for the test account.
     :param tf_output: ``terraform output -json`` of the test root module.
+    :param asg_name: Name of the pool's autoscaling group.
     :param lambda_role_arns: Lambda execution role ARNs, as returned by
         :func:`assert_role_name_prefixes`.
     :raises AssertionError: If an output doesn't match the roles.
@@ -275,6 +299,14 @@ def assert_role_outputs(
     LOG.info(
         "lambda_role_name_prefix: %s, lambda_role_arn_pattern: %s", prefix, pattern
     )
+    expected_prefix = f"{LAMBDA_ROLE_PREFIX}{asg_pool(asg_name)}-"
+    assert prefix == expected_prefix, (
+        f"lambda_role_name_prefix is {prefix}, expected {expected_prefix} "
+        f"for ASG {asg_name}"
+    )
+    assert pattern.endswith(
+        f":role/{expected_prefix}*"
+    ), f"lambda_role_arn_pattern {pattern} does not end with :role/{expected_prefix}*"
     for role_arn in lambda_role_arns.values():
         assert role_arn.split("/")[-1].startswith(
             prefix

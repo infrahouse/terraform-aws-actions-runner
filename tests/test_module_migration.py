@@ -345,10 +345,12 @@ def test_module_migration(
                 "the upgrade did not roll the runners."
             )
 
+            # asg_name is the 4.x pool's, so this also proves the upgrade kept <pool>.
             assert_role_name_prefixes(
                 boto3_session,
                 aws_region,
                 migrated_output["runner_role_arn"]["value"],
+                asg_name,
                 {
                     "reg": f"{asg_name}_registration",
                     "dereg": f"{asg_name}_deregistration",

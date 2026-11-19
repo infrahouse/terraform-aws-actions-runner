@@ -1,3 +1,8 @@
+output "autoscaling_group_name" {
+  description = "Name of the runner autoscaling group."
+  value       = module.actions-runner.autoscaling_group_name
+}
+
 output "runner_role_arn" {
   description = "ARN of the runner instance role."
   value       = module.actions-runner.runner_role_arn
