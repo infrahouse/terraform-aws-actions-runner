@@ -112,7 +112,7 @@ def write_main_tf(terraform_module_dir, source, version=None):
         pytest.param("4.4.1", id="from-4.4.1"),
     ],
 )
-@pytest.mark.parametrize("aws_provider_version", ["~> 5.62"], ids=["aws-5"])
+@pytest.mark.parametrize("aws_provider_version", ["~> 6.0"], ids=["aws-6"])
 @pytest.mark.parametrize(
     "secret_type, ubuntu_codename",
     [
