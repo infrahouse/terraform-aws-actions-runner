@@ -44,8 +44,10 @@ locals {
   deregistration_role_name_prefix = "${local.lambda_role_name_prefix}dereg-"
   record_metric_role_name_prefix  = "${local.lambda_role_name_prefix}metric-"
 
-  # The fixed prefix keeps any role_name out of the actions-runner-lambda-* namespace above.
-  instance_role_name = "actions-runner-instance-${var.role_name}"
+  # Issue #111: the instance role is named from the same <pool>, so a pool's roles read as a set and the
+  # name is unique per pool without any input from the caller. The fixed prefix keeps it out of the
+  # actions-runner-lambda-* namespace above. instance-profile uses it verbatim as the role name.
+  instance_role_name = "actions-runner-instance-${random_string.asg_name.result}"
 
   registration_token_secret_prefix = "GH-reg-token-${random_string.reg_token_suffix.result}"
   registration_hookname            = "registration"

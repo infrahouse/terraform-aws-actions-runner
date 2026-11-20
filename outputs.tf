@@ -5,8 +5,8 @@ output "runner_role_arn" {
 
 output "runner_role_name" {
   description = <<-EOT
-    Name of the runner instance role: actions-runner-instance-<role_name>.
-    It never matches actions-runner-lambda-*, the prefix of the module's Lambda roles.
+    Name of the runner instance role: actions-runner-instance-<pool>, with the same <pool> as
+    lambda_role_name_prefix. It never matches actions-runner-lambda-*, the prefix of the module's Lambda roles.
   EOT
   value       = module.instance-profile.instance_role_name
 }
