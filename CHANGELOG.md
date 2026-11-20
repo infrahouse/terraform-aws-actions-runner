@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.0.0] - 2026-11-20
+
+### Documentation
+
+- Describe the role name prefixes and how to upgrade to 5.0.0 ([#109](https://github.com/infrahouse/terraform-aws-actions-runner/issues/109))
+- Say the upgrade rebuilds and re-uploads the Lambda packages ([#109](https://github.com/infrahouse/terraform-aws-actions-runner/issues/109))
+
+### Features
+
+- Python_version accepts only python3.12 and python3.13 (lambda-monitored 2.2.0)
+- Replace the Lambda roles with ones named actions-runner-lambda-<pool>-<function>- ([#109](https://github.com/infrahouse/terraform-aws-actions-runner/issues/109))
+- Replace the instance role with one named actions-runner-instance-<role_name> ([#109](https://github.com/infrahouse/terraform-aws-actions-runner/issues/109))
+- Output the instance role name and the Lambda role prefix and ARN pattern ([#109](https://github.com/infrahouse/terraform-aws-actions-runner/issues/109))
+- Roll the runners when the instance role is replaced ([#109](https://github.com/infrahouse/terraform-aws-actions-runner/issues/109))
+
+### Testing
+
+- Assert distinct Lambda and instance role name prefixes ([#109](https://github.com/infrahouse/terraform-aws-actions-runner/issues/109))
+- Expect role_name = null to fail at plan ([#109](https://github.com/infrahouse/terraform-aws-actions-runner/issues/109))
+- Cover the upgrade from 4.4.1 and check the runners roll ([#109](https://github.com/infrahouse/terraform-aws-actions-runner/issues/109))
+- Skip the migration from 3.0.3, which can no longer bootstrap a runner ([#109](https://github.com/infrahouse/terraform-aws-actions-runner/issues/109))
+- Run the migration test on AWS provider 6, which the module requires ([#109](https://github.com/infrahouse/terraform-aws-actions-runner/issues/109))
+- Tie the Lambda roles' <pool> to the ASG name's random suffix ([#109](https://github.com/infrahouse/terraform-aws-actions-runner/issues/109))
+- Check that this module, not lambda-monitored, rejects a bad python_version ([#109](https://github.com/infrahouse/terraform-aws-actions-runner/issues/109))
+
 ## [4.4.1] - 2026-09-08
 
 ### Bug Fixes
