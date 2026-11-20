@@ -7,6 +7,12 @@ Test upgrades from earlier releases to the current version.
 - From 4.4.1, the last release before issue #109: the Lambda and instance roles are replaced with
   ones carrying the new name prefixes, and the runners must roll, so that no runner keeps
   credentials of the deleted instance role.
+- From 5.0.0, the last release with ``role_name`` (issue #111): the instance role
+  ``actions-runner-instance-<role_name>`` is replaced with ``actions-runner-instance-<pool>``, and
+  the runners must roll for the same reason.
+
+Both releases take ``role_name``, so phase 1 sets it, as callers who run more than one pool do.
+Phase 2 doesn't: the current version has no such input.
 """
 
 import json
@@ -14,9 +20,10 @@ import platform
 import sys
 import time
 from os import path as osp, remove
+from secrets import token_hex
 from shutil import rmtree
 from textwrap import dedent
-from typing import Set
+from typing import Dict, Optional, Set
 
 import boto3
 import pytest
@@ -55,22 +62,46 @@ def in_service_instance_ids(autoscaling_client, asg_name: str) -> Set[str]:
     }
 
 
-def write_main_tf(terraform_module_dir, source, version=None):
+def instance_profile_of_role(iam_client, role_name: str) -> Dict:
+    """
+    Return the one instance profile that holds a role.
+
+    :param iam_client: Boto3 IAM client.
+    :param role_name: Name of the role.
+    :return: The instance profile, as ``ListInstanceProfilesForRole`` describes it.
+    :raises AssertionError: If the role isn't in exactly one instance profile.
+    """
+    profiles = iam_client.list_instance_profiles_for_role(RoleName=role_name)[
+        "InstanceProfiles"
+    ]
+    assert len(profiles) == 1, f"Role {role_name} is in instance profiles {profiles}"
+    return profiles[0]
+
+
+def write_main_tf(
+    terraform_module_dir: str,
+    source: str,
+    version: Optional[str] = None,
+    role_name: Optional[str] = None,
+) -> None:
     """
     Generate main.tf for the test with specified source and version.
 
-    Args:
-        terraform_module_dir: Directory where main.tf should be written
-        source: Terraform module source (registry or local path)
-        version: Module version (only used with registry source)
+    :param terraform_module_dir: Directory where main.tf should be written.
+    :param source: Terraform module source (registry or local path).
+    :param version: Module version (only used with registry source).
+    :param role_name: Value for the module's ``role_name`` input, which releases before
+        6.0.0 take. ``None`` leaves the argument out.
     """
     version_line = f'  version = "{version}"\n' if version else ""
+    role_name_line = f"  role_name = {json.dumps(role_name)}\n" if role_name else ""
 
     with open(osp.join(terraform_module_dir, "main.tf"), "w") as fp:
         fp.write(dedent(f"""
                 module "actions-runner" {{
                   source  = "{source}"
                   {version_line}
+                  {role_name_line}
                   instance_type             = "t3a.small"
                   asg_min_size              = 1
                   asg_max_size              = var.asg_max_size
@@ -110,6 +141,7 @@ def write_main_tf(terraform_module_dir, source, version=None):
             ),
         ),
         pytest.param("4.4.1", id="from-4.4.1"),
+        pytest.param("5.0.0", id="from-5.0.0"),
     ],
 )
 @pytest.mark.parametrize("aws_provider_version", ["~> 6.0"], ids=["aws-6"])
@@ -135,14 +167,16 @@ def test_module_migration(
     """
     Test the upgrade from ``from_version`` to the current version.
 
-    1. Deploy ``from_version``
+    1. Deploy ``from_version`` with a ``role_name`` that starts with ``actions-runner-``
     2. Verify the deregistration log group exists and write a test message to it
-    3. Upgrade to the current version
+    3. Upgrade to the current version, without ``role_name``
     4. Verify the log group has the same ARN and still holds the test message
     5. Verify the runners come back online after the instance refresh
     6. Verify no instance from step 1 is still in service: the instance role was replaced,
        and runners launched with the old role hold credentials of a deleted role
-    7. Verify the instance and Lambda roles AWS reports carry the issue #109 prefixes
+    7. Verify the instance role AWS reports is ``actions-runner-instance-<pool>`` and the
+       Lambda roles carry the same ``<pool>``, the one the pool had before the upgrade
+    8. Verify the instance profile from step 1 is the same profile and now holds the new role
     """
     subnet_public_ids = service_network["subnet_public_ids"]["value"]
     subnet_private_ids = service_network["subnet_private_ids"]["value"]
@@ -217,11 +251,16 @@ def test_module_migration(
     LOG.info("PHASE 1: Deploying version %s (old version)", from_version)
     LOG.info("=" * 80)
 
-    # Generate main.tf for Phase 1 with registry source
+    # Generate main.tf for Phase 1 with registry source. Callers who set role_name
+    # usually started it with actions-runner-, which 5.0.0 turned into
+    # actions-runner-instance-actions-runner-<codename> (issue #111). The random part
+    # keeps the role clear of others in the shared test account: 4.x uses role_name
+    # verbatim, and a role named actions-runner-noble may already exist there.
     write_main_tf(
         terraform_module_dir,
         source="registry.infrahouse.com/infrahouse/actions-runner/aws",
         version=from_version,
+        role_name=f"actions-runner-{ubuntu_codename}-{token_hex(3)}",
     )
     LOG.info("Generated main.tf for %s from registry", from_version)
 
@@ -239,6 +278,16 @@ def test_module_migration(
         old_instance_ids = in_service_instance_ids(autoscaling_client, asg_name)
         LOG.info("Instances in service before the upgrade: %s", old_instance_ids)
         assert old_instance_ids, f"{from_version} has no instances in service"
+
+        iam_client = boto3_session.client("iam")
+        old_role_name = tf_output["runner_role_arn"]["value"].split("/")[-1]
+        old_instance_profile = instance_profile_of_role(iam_client, old_role_name)
+        LOG.info(
+            "Instance role before the upgrade: %s, in instance profile %s (%s)",
+            old_role_name,
+            old_instance_profile["InstanceProfileName"],
+            old_instance_profile["InstanceProfileId"],
+        )
 
         log_group_name = f"/aws/lambda/{asg_name}_deregistration"
         LOG.info(f"Deregistration log group (constructed): {log_group_name}")
@@ -279,7 +328,8 @@ def test_module_migration(
     LOG.info("PHASE 2: Upgrading from %s to the current version", from_version)
     LOG.info("=" * 80)
 
-    # Generate main.tf for Phase 2 with local source
+    # Generate main.tf for Phase 2 with local source. The current version has no
+    # role_name input, so a caller upgrading deletes it from the module block.
     write_main_tf(terraform_module_dir, source="../..")
     LOG.info("Generated main.tf with local source")
 
@@ -345,11 +395,13 @@ def test_module_migration(
                 "the upgrade did not roll the runners."
             )
 
-            # asg_name is the 4.x pool's, so this also proves the upgrade kept <pool>.
+            # asg_name is the pool's name before the upgrade, so this also proves the
+            # upgrade kept <pool>, and that the instance role is named from it.
+            new_role_arn = migrated_output["runner_role_arn"]["value"]
             assert_role_name_prefixes(
                 boto3_session,
                 aws_region,
-                migrated_output["runner_role_arn"]["value"],
+                new_role_arn,
                 asg_name,
                 {
                     "reg": f"{asg_name}_registration",
@@ -357,6 +409,30 @@ def test_module_migration(
                     "metric": f"{asg_name}_record_metric",
                 },
             )
+
+            # The instance profile keeps its name; only its role changes. A replaced
+            # profile would get a new unique id even under the same name.
+            new_role_name = new_role_arn.split("/")[-1]
+            new_instance_profile = instance_profile_of_role(iam_client, new_role_name)
+            LOG.info(
+                "Instance role after the upgrade: %s, in instance profile %s (%s)",
+                new_role_name,
+                new_instance_profile["InstanceProfileName"],
+                new_instance_profile["InstanceProfileId"],
+            )
+            assert (
+                new_role_name != old_role_name
+            ), f"The upgrade from {from_version} kept the instance role {old_role_name}"
+            assert (
+                new_instance_profile["InstanceProfileId"]
+                == old_instance_profile["InstanceProfileId"]
+            ), (
+                f"Instance profile {old_instance_profile['Arn']} was replaced by "
+                f"{new_instance_profile['Arn']}; it should only have changed its role"
+            )
+            assert [role["RoleName"] for role in new_instance_profile["Roles"]] == [
+                new_role_name
+            ], f"Instance profile {new_instance_profile['Arn']} holds {new_instance_profile['Roles']}"
         finally:
             if not keep_after:
                 # Cleanup
