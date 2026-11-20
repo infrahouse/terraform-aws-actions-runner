@@ -28,7 +28,8 @@ INSPECTOR_EXCLUSION_TAG = "InspectorEc2Exclusion"
 
 # Role name prefixes from issue #109. A policy that selects principals by role name
 # (e.g. ArnLike on aws:PrincipalArn) relies on these, so the tests check them against
-# the roles AWS reports rather than against Terraform strings.
+# the roles AWS reports rather than against Terraform strings. Since issue #111 the
+# instance role is exactly INSTANCE_ROLE_PREFIX + <pool>, with the Lambda roles' <pool>.
 INSTANCE_ROLE_PREFIX = "actions-runner-instance-"
 LAMBDA_ROLE_PREFIX = "actions-runner-lambda-"
 LAMBDA_ROLE_PATTERN = "actions-runner-lambda-*"
@@ -168,7 +169,7 @@ def assert_no_inspector_exclusion_tag(
 
 def asg_pool(asg_name: str) -> str:
     """
-    Return the ``<pool>`` part the Lambda role names of an ASG must carry.
+    Return the ``<pool>`` part the instance and Lambda role names of an ASG must carry.
 
     It is the random suffix after the ASG name's last ``-``. Unlike the rest of the ASG
     name, which comes from the launch template's timestamped name, it stays the same for
@@ -188,15 +189,16 @@ def assert_role_name_prefixes(
     lambda_functions: Dict[str, str],
 ) -> Dict[str, str]:
     """
-    Fail unless the instance role and the Lambda execution roles carry the issue #109 prefixes.
+    Fail unless the instance role and the Lambda execution roles carry the pool's names.
 
-    The instance role must start with ``actions-runner-instance-``. Each Lambda's execution
-    role, as the Lambda service reports it, must be named
-    ``actions-runner-lambda-<pool>-<function>-<suffix>``, where ``<pool>`` is the random suffix
-    of the ASG name (see :func:`asg_pool`) and ``<function>`` is the role's own token. The
-    pattern ``actions-runner-lambda-*`` must match every Lambda role and must not match the
-    instance role, so a policy can grant the Lambdas something by pattern without granting it
-    to the runners.
+    ``<pool>`` is the random suffix of the ASG name (see :func:`asg_pool`). The instance role
+    must be named exactly ``actions-runner-instance-<pool>`` (issue #111). Each Lambda's
+    execution role, as the Lambda service reports it, must be named
+    ``actions-runner-lambda-<pool>-<function>-<suffix>`` (issue #109), where ``<function>`` is
+    the role's own token, so all four roles share ``<pool>``. The pattern
+    ``actions-runner-lambda-*`` must match every Lambda role and must not match the instance
+    role, so a policy can grant the Lambdas something by pattern without granting it to the
+    runners.
 
     :param boto3_session: Boto3 session for the test account.
     :param aws_region: AWS region the Lambda functions live in.
@@ -211,18 +213,26 @@ def assert_role_name_prefixes(
     iam_client = boto3_session.client("iam")
     lambda_client = boto3_session.client("lambda", region_name=aws_region)
 
+    pool = asg_pool(asg_name)
+
     instance_role = iam_client.get_role(RoleName=runner_role_arn.split("/")[-1])["Role"]
     instance_role_name = instance_role["RoleName"]
     LOG.info("Instance role: %s", instance_role["Arn"])
     assert instance_role_name.startswith(
         INSTANCE_ROLE_PREFIX
     ), f"Instance role {instance_role_name} does not start with {INSTANCE_ROLE_PREFIX}"
+    # The Lambda roles below must carry the same pool, so this also proves the
+    # instance role and the Lambda roles share <pool>.
+    expected_instance_role_name = f"{INSTANCE_ROLE_PREFIX}{pool}"
+    assert instance_role_name == expected_instance_role_name, (
+        f"Instance role is {instance_role_name}, expected {expected_instance_role_name}, "
+        f"named from pool {pool!r}, the random suffix of ASG {asg_name}"
+    )
     assert not fnmatchcase(instance_role_name, LAMBDA_ROLE_PATTERN), (
         f"Instance role {instance_role_name} matches {LAMBDA_ROLE_PATTERN}, "
         "so a policy meant for the Lambdas would also cover the runners."
     )
 
-    pool = asg_pool(asg_name)
     lambda_role_arns = {}
     for token, function_name in lambda_functions.items():
         role_arn = lambda_client.get_function(FunctionName=function_name)[
