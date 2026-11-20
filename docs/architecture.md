@@ -173,20 +173,23 @@ The module's roles have distinct, predictable name prefixes, so a policy can sel
 
 | Role | Name |
 |------|------|
-| Instance role | `actions-runner-instance-<role_name>` |
+| Instance role | `actions-runner-instance-<pool>` |
 | Registration Lambda | `actions-runner-lambda-<pool>-reg-<suffix>` |
 | Deregistration Lambda | `actions-runner-lambda-<pool>-dereg-<suffix>` |
 | Record-metric Lambda | `actions-runner-lambda-<pool>-metric-<suffix>` |
 
-- `<pool>` is the random 6-character suffix of the ASG name. It stays the same for the life of the pool, including
-  when the launch template is replaced.
+- `<pool>` is the random 6-character suffix of the ASG name, the same in all four names, so a pool's roles read as
+  a set, for example `actions-runner-instance-lam2UA` and `actions-runner-lambda-lam2UA-reg-…`. It stays the same
+  for the life of the pool, including when the launch template is replaced, and differs between pools, so two pools
+  in one account never collide and the module needs no role name from the caller.
 - `<suffix>` is the 26-character suffix Terraform appends to a `name_prefix`.
 - `actions-runner-lambda-*` matches every pool's Lambda roles and no instance role; the
-  `lambda_role_arn_pattern` output matches this pool's Lambda roles only.
+  `lambda_role_arn_pattern` output matches this pool's Lambda roles only. The instance role carries `<pool>` too,
+  so don't select the Lambdas by `<pool>` alone.
 
-Changing `role_name` replaces the instance role. The instance role name is passed to the instances as the
-`instance_role_name` Puppet fact, so the change also rolls the runners: a running instance can keep the credentials
-of a role swapped out of its instance profile for up to an hour.
+The instance profile keeps its own name, `actions-runner-<random suffix>`. The instance role name is passed to the
+instances as the `instance_role_name` Puppet fact, so when an upgrade replaces the instance role, the runners roll
+too: a running instance can keep the credentials of a role swapped out of its instance profile for up to an hour.
 
 ### Network
 
