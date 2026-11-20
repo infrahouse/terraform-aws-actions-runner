@@ -31,6 +31,10 @@ Self-hosted runners offer several advantages over GitHub-hosted runners:
 
 ## What's New
 
+- **v6.0.0 — Instance role named from the pool (#111):**
+    - **Breaking:** the instance role is now `actions-runner-instance-<pool>`, with the same `<pool>` as the Lambda
+      roles, and the `role_name` input is removed. Delete `role_name` from your module block. Upgrading replaces the
+      instance role and rolls the runners.
 - **v5.0.0 — Distinct IAM role name prefixes (#109):**
     - **Breaking:** the instance role is now `actions-runner-instance-<role_name>` and the Lambda roles
       `actions-runner-lambda-<pool>-<function>-…`, so a policy can select the Lambdas by name pattern without the
@@ -67,6 +71,13 @@ Self-hosted runners offer several advantages over GitHub-hosted runners:
     - Orphaned runners are now automatically deregistered.
 
 ## Migration Guide
+
+### Upgrading to v6.0.0 (instance role named from the pool)
+
+Delete `role_name` from the module block: passing it fails at plan with "Unsupported argument". The instance role is
+replaced with `actions-runner-instance-<pool>` and the runners roll. A pool on 4.x can upgrade straight to 6.0.0. See
+the [upgrade guide](https://infrahouse.github.io/terraform-aws-actions-runner/upgrading/) for what changes and what to
+do.
 
 ### Upgrading to v5.0.0 (IAM role name prefixes)
 
