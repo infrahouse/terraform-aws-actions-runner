@@ -6,7 +6,7 @@ import sys
 from os import path as osp, remove
 from shutil import rmtree
 from textwrap import dedent
-from typing import List, Optional
+from typing import Dict, List
 
 import boto3
 import pytest
@@ -124,7 +124,8 @@ def test_module(
         gha = GitHubActions(GitHubAuth(github_token, GITHUB_ORG_NAME))
         try:
             # Issue #109: a policy must be able to select the Lambda roles by name
-            # pattern without also selecting the instance role.
+            # pattern without also selecting the instance role. Issue #111: the
+            # instance role is named from the same <pool> as the Lambda roles.
             asg_name = tf_output["autoscaling_group_name"]["value"]
             lambda_role_arns = assert_role_name_prefixes(
                 boto3_session,
@@ -210,14 +211,10 @@ def test_module(
 # does before it configures any provider. The environment is stripped of AWS settings
 # so that a missing validation fails the test instead of reaching an account.
 REPO_ROOT = osp.abspath(osp.join(osp.dirname(__file__), ".."))
-DEFAULT_ROLE_NAME = "actions-runner"
 DEFAULT_PYTHON_VERSION = "python3.12"
-# Text only this module's validation rules produce. Nested modules validate some of the
-# same inputs with the same "Invalid value for variable" summary (lambda-monitored checks
-# python_version), so the tests look for these to prove the root module rejects them.
-ROLE_NAME_ERROR = (
-    "role_name must be a string of 1 to 40 letters, digits or +=,.@_- characters. Got"
-)
+# Text only this module's validation rule produces. lambda-monitored validates python_version
+# too, with the same "Invalid value for variable" summary, so the test looks for this to
+# prove the root module rejects it.
 PYTHON_VERSION_ERROR = "python_version must be python3.12 or python3.13. Got"
 
 
@@ -249,32 +246,30 @@ def _terraform(args: List[str], cwd: str) -> subprocess.CompletedProcess:
     )
 
 
-def _write_validation_root(
-    root_dir: str, role_name: Optional[str], python_version: str
-) -> None:
+def _write_validation_root(root_dir: str, arguments: Dict[str, str]) -> None:
     """
-    Write a root module that calls this module with the given inputs as literals.
+    Write a root module that calls this module with the given arguments as literals.
 
     The values are literals, not root variables, so that Terraform validates them
-    before planning. The other required inputs are placeholders that are never used.
+    before planning. The required inputs are placeholders that are never used.
 
     :param root_dir: Directory to write ``main.tf`` into.
-    :param role_name: Value for the module's ``role_name`` input; ``None`` writes ``null``.
-    :param python_version: Value for the module's ``python_version`` input.
+    :param arguments: Module arguments to pass besides the required ones, by name.
+        Each value is written as a JSON literal.
     """
+    lines = [
+        'module "actions-runner" {',
+        f'  source                  = "{osp.relpath(REPO_ROOT, root_dir)}"',
+        '  environment             = "development"',
+        f'  github_org_name         = "{GITHUB_ORG_NAME}"',
+        '  github_token_secret_arn = "placeholder"',
+        '  subnet_ids              = ["subnet-placeholder"]',
+        '  alarm_emails            = ["placeholder@example.com"]',
+    ]
+    lines += [f"  {name} = {json.dumps(value)}" for name, value in arguments.items()]
+    lines.append("}")
     with open(osp.join(root_dir, "main.tf"), "w") as fp:
-        fp.write(dedent(f"""
-                module "actions-runner" {{
-                  source                  = "{osp.relpath(REPO_ROOT, root_dir)}"
-                  environment             = "development"
-                  github_org_name         = "{GITHUB_ORG_NAME}"
-                  github_token_secret_arn = "placeholder"
-                  subnet_ids              = ["subnet-placeholder"]
-                  alarm_emails            = ["placeholder@example.com"]
-                  role_name               = {json.dumps(role_name)}
-                  python_version          = {json.dumps(python_version)}
-                }}
-                """))
+        fp.write("\n".join(lines) + "\n")
 
 
 @pytest.fixture(scope="module")
@@ -285,41 +280,40 @@ def validation_root(tmp_path_factory) -> str:
     :return: Path to the initialized root module directory.
     """
     root_dir = str(tmp_path_factory.mktemp("variable-validation"))
-    _write_validation_root(root_dir, DEFAULT_ROLE_NAME, DEFAULT_PYTHON_VERSION)
+    _write_validation_root(root_dir, {"python_version": DEFAULT_PYTHON_VERSION})
     result = _terraform(["init", "-input=false", "-no-color"], root_dir)
     assert result.returncode == 0, result.stdout + result.stderr
     return root_dir
 
 
 @pytest.mark.parametrize(
-    "role_name, python_version, invalid_variable, expected_error",
+    "arguments, expected_errors",
     [
-        # actions-runner-instance- is 24 characters, so 41 makes a 65-character role name.
-        ("r" * 41, DEFAULT_PYTHON_VERSION, "role_name", ROLE_NAME_ERROR),
-        ("actions/runner", DEFAULT_PYTHON_VERSION, "role_name", ROLE_NAME_ERROR),
-        ("actions-runner*", DEFAULT_PYTHON_VERSION, "role_name", ROLE_NAME_ERROR),
-        ("", DEFAULT_PYTHON_VERSION, "role_name", ROLE_NAME_ERROR),
-        # null used to fall back to a name_prefix-based role; it can't make
-        # actions-runner-instance-<role_name>, so it must be rejected, not crash.
-        (None, DEFAULT_PYTHON_VERSION, "role_name", ROLE_NAME_ERROR),
         # lambda-monitored 2.x only supports the Amazon Linux 2023 runtimes. It rejects
         # python3.11 too, so only PYTHON_VERSION_ERROR shows this module does.
-        (DEFAULT_ROLE_NAME, "python3.11", "python_version", PYTHON_VERSION_ERROR),
+        (
+            {"python_version": "python3.11"},
+            [
+                "Invalid value for variable",
+                "var.python_version is",
+                PYTHON_VERSION_ERROR,
+            ],
+        ),
+        # Issue #111: the instance role is named from the pool, and role_name is gone.
+        # A caller who still passes it, as 5.0.0 callers do, must be told at plan.
+        (
+            {"role_name": "actions-runner-noble"},
+            [
+                "Unsupported argument",
+                'An argument named "role_name" is not expected here.',
+            ],
+        ),
     ],
-    ids=[
-        "role-name-too-long",
-        "role-name-slash",
-        "role-name-wildcard",
-        "role-name-empty",
-        "role-name-null",
-        "python-3.11",
-    ],
+    ids=["python-3.11", "role-name-removed"],
 )
-def test_invalid_input_fails_at_plan(
-    validation_root, role_name, python_version, invalid_variable, expected_error
-):
-    """An input that would produce an invalid role name or runtime fails at plan, in this module."""
-    _write_validation_root(validation_root, role_name, python_version)
+def test_invalid_input_fails_at_plan(validation_root, arguments, expected_errors):
+    """An argument this module rejects fails at plan, with this module's own error."""
+    _write_validation_root(validation_root, arguments)
     result = _terraform(["plan", "-input=false", "-no-color"], validation_root)
     output = result.stdout + result.stderr
     LOG.info("terraform plan output:\n%s", output)
@@ -327,22 +321,20 @@ def test_invalid_input_fails_at_plan(
     flat_output = " ".join(output.split())
 
     assert result.returncode != 0, output
-    assert "Invalid value for variable" in output, output
-    assert f"var.{invalid_variable} is" in output, output
-    assert expected_error in flat_output, output
+    for expected_error in expected_errors:
+        assert expected_error in flat_output, output
 
 
 @pytest.mark.parametrize(
-    "role_name, python_version",
+    "arguments",
     [
-        # The longest role_name that keeps actions-runner-instance-<role_name> within 64.
-        ("r" * 40, DEFAULT_PYTHON_VERSION),
-        ("Runner_1+=,.@-x", "python3.13"),
+        {},
+        {"python_version": "python3.13"},
     ],
-    ids=["role-name-40-chars", "role-name-all-iam-characters"],
+    ids=["defaults", "python-3.13"],
 )
-def test_valid_input_passes_validation(validation_root, role_name, python_version):
-    """Inputs at the edge of what IAM and Lambda accept are not rejected."""
-    _write_validation_root(validation_root, role_name, python_version)
+def test_valid_input_passes_validation(validation_root, arguments):
+    """The defaults and every runtime this module supports are not rejected."""
+    _write_validation_root(validation_root, arguments)
     result = _terraform(["validate", "-no-color"], validation_root)
     assert result.returncode == 0, result.stdout + result.stderr

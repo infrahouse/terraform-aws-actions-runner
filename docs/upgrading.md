@@ -1,5 +1,75 @@
 # Upgrading
 
+## Upgrading to 6.0.0 (instance role named from the pool)
+
+6.0.0 names the instance role from the pool, the way the Lambda roles are named, and removes the `role_name` input
+([#111](https://github.com/infrahouse/terraform-aws-actions-runner/issues/111)).
+
+### What changes
+
+| Role | 5.0.0 name | 6.0.0 name |
+|------|------------|------------|
+| Instance role | `actions-runner-instance-<role_name>` | `actions-runner-instance-<pool>` |
+| Lambda roles | `actions-runner-lambda-<pool>-<function>-<suffix>` | No change |
+
+- `<pool>` is the 6-character random suffix at the end of the ASG name (the `autoscaling_group_name` output), the
+  value the Lambda role names have carried since 5.0.0. An existing pool keeps its `<pool>`, so after the upgrade its
+  roles read as a set: `actions-runner-instance-lam2UA`, `actions-runner-lambda-lam2UA-reg-…`,
+  `actions-runner-lambda-lam2UA-dereg-…` and `actions-runner-lambda-lam2UA-metric-…`.
+- The name is unique per pool and stays the same for the life of the pool, so pools in one account no longer need
+  different `role_name` values, and a name such as `actions-runner-instance-actions-runner-noble` goes away.
+- The instance profile keeps its name and ARN.
+
+### What happens on `terraform apply`
+
+- **The instance role is replaced, and the instance profile's role changes.** Terraform removes the old role from the
+  profile and deletes it, then creates `actions-runner-instance-<pool>` and adds it to the profile.
+- **The runners roll, as in 5.0.0.** The instance role name is passed to the instances as a Puppet fact, so the launch
+  template gets a new version and the ASG starts an instance refresh: new runners launch with the new role, then the
+  old ones are terminated.
+- From 5.0.0, nothing else is replaced: the Lambda roles, functions and packages don't change.
+
+Runners launched before the upgrade keep credentials of the deleted role until they are replaced. On those runners,
+AWS calls fail: jobs that use the instance role during the upgrade can fail, and an old runner can stay in
+`Terminating:Wait` for up to the termination hook's 30-minute heartbeat timeout, because it can't complete its own
+lifecycle hook. Upgrade when the pool is idle, or be ready to re-run jobs that were running at the time.
+
+### What you need to change
+
+#### Delete `role_name`
+
+Delete `role_name` from your module block. 6.0.0 has no such input, so a module block that still sets it fails at
+plan:
+
+```text
+Error: Unsupported argument
+
+An argument named "role_name" is not expected here.
+```
+
+Nothing replaces it: the module names the role. To refer to the instance role elsewhere, use the `runner_role_name`
+and `runner_role_arn` outputs, which now describe `actions-runner-instance-<pool>`.
+
+#### Policies that name the instance role
+
+- A policy that names the instance role by ARN or by name must be updated. A policy that names a role ARN as a
+  `Principal` is bound to that role's unique ID, so reference the `runner_role_arn` output and Terraform updates the
+  policy after the new role exists.
+- `arn:aws:iam::<account>:role/actions-runner-instance-*` still matches every pool's instance role.
+- If the identity that runs Terraform may only create roles with certain names, `actions-runner-instance-*` covers the
+  new name; a narrower pattern built from your `role_name` doesn't.
+- The instance role now carries `<pool>` too, so a pattern built from `<pool>` alone also matches it. In resource
+  policies that grant something to the runner's Lambdas by name pattern, match `actions-runner-lambda-*` (or the
+  pool's `lambda_role_arn_pattern` output), which no instance role can match.
+
+### Upgrading from 4.x
+
+A pool on 4.x can upgrade straight to 6.0.0, in one `terraform apply`. Everything in
+[Upgrading to 5.0.0](#upgrading-to-500-iam-role-name-prefixes) applies: the Lambda roles are replaced, the Lambda
+packages are rebuilt, policies that match the old role names must be updated, and `python_version` must be
+`python3.12` or `python3.13`. The exception is its `role_name` part: delete `role_name` instead. The instance role
+becomes `actions-runner-instance-<pool>`, and the runners roll once.
+
 ## Upgrading to 5.0.0 (IAM role name prefixes)
 
 5.0.0 gives the module's IAM roles distinct, predictable name prefixes
@@ -96,6 +166,9 @@ data "aws_iam_policy_document" "runner_lambdas_only" {
 ```
 
 #### `role_name`
+
+6.0.0 removes `role_name`. If you upgrade from 4.x straight to 6.0.0, skip this part and delete the argument instead
+(see [Upgrading to 6.0.0](#upgrading-to-600-instance-role-named-from-the-pool)).
 
 - The module now adds `actions-runner-instance-` in front of `role_name`. Keep the value you had; don't add the
   prefix yourself.

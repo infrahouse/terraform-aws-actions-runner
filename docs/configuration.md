@@ -125,12 +125,11 @@ extra_repos = {
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `role_name` | string | `"actions-runner"` | Instance role suffix: the role is `actions-runner-instance-<role_name>` |
 | `extra_policies` | map(string) | `{}` | Additional IAM policy ARNs |
 | `extra_instance_profile_permissions` | string | `null` | Additional IAM policy JSON |
 
-`role_name` must be 1 to 40 characters from letters, digits and `+=,.@_-`, so the full role name fits IAM's
-64-character limit. Role names are unique per account: give each runner pool in an account its own `role_name`.
+The module names the instance role `actions-runner-instance-<pool>`, with the same `<pool>` as the pool's Lambda
+roles; there is no input for it. Use the `runner_role_name` and `runner_role_arn` outputs to refer to it.
 See [Architecture → IAM role naming](architecture.md#iam-role-naming).
 
 ## Networking
@@ -162,7 +161,7 @@ See [Architecture → IAM role naming](architecture.md#iam-role-naming).
 | `deregistration_log_group` | CloudWatch log group for deregistration Lambda |
 | `registration_token_secret_prefix` | Prefix for runner registration secrets |
 | `runner_role_arn` | IAM role ARN for runner instances |
-| `runner_role_name` | Instance role name, `actions-runner-instance-<role_name>` |
+| `runner_role_name` | Instance role name, `actions-runner-instance-<pool>` |
 | `lambda_role_name_prefix` | Name prefix of the pool's Lambda roles, `actions-runner-lambda-<pool>-` |
 | `lambda_role_arn_pattern` | `ArnLike` pattern that matches the pool's Lambda roles only |
 

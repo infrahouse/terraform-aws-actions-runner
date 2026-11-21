@@ -254,26 +254,6 @@ variable "python_version" {
   }
 }
 
-variable "role_name" {
-  description = <<-EOT
-    Suffix of the IAM role the runner instances use. The module names the role
-    actions-runner-instance-<role_name>, so the instance role never matches actions-runner-lambda-*,
-    the prefix of this module's Lambda roles. Role names are unique per account, so give each runner pool
-    in an account its own role_name. 1 to 40 characters from letters, digits and +=,.@_-, which keeps
-    the full name within IAM's 64-character limit. Changing it replaces the instance role.
-  EOT
-  type        = string
-  default     = "actions-runner"
-
-  validation {
-    condition     = var.role_name == null ? false : can(regex("^[\\w+=,.@-]{1,40}$", var.role_name))
-    error_message = <<-EOT
-      role_name must be a string of 1 to 40 letters, digits or +=,.@_- characters. Got ${jsonencode(var.role_name)}.
-      The instance role is named actions-runner-instance-<role_name>, and IAM role names are at most 64 characters.
-    EOT
-  }
-}
-
 variable "root_volume_size" {
   description = "Root volume size in EC2 instance in Gigabytes"
   type        = number
