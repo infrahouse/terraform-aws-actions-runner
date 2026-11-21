@@ -376,8 +376,9 @@ def test_module_migration(
     3. Wait for the pool to settle, then protect every runner in service from scale-in, as
        ``gha_prerun.sh`` does for the runner that runs the CD job
     4. Upgrade to the current version, without ``role_name``
-    5. Once the refresh has ended, or after ``PROTECTION_HOLD_SECONDS``, lift the
-       protection, as ``gha_postrun.sh`` does
+    5. Once the refresh has ended, or after ``PROTECTION_HOLD_SECONDS``, verify every
+       protected runner is still in service (the refresh didn't cut its job short), then
+       lift the protection, as ``gha_postrun.sh`` does
     6. Verify the log group has the same ARN and still holds the test message
     7. Verify the runners come back online after the instance refresh
     8. Verify no instance in service before the upgrade still is, and every instance in
@@ -571,12 +572,19 @@ def test_module_migration(
         log_instance_refresh(
             autoscaling_client, asg_name, "before the protection is lifted"
         )
+        # Neither Wait nor Ignore touches a protected runner. A refresh that replaced one
+        # while it was protected (ScaleInProtectedInstances=Refresh) would cut its job short,
+        # and the checks after the lift would pass all the same.
+        gone = protected_instance_ids - in_service_instance_ids(
+            autoscaling_client, asg_name
+        )
+        assert not gone, (
+            f"Instances {sorted(gone)} were protected from scale-in and left service before "
+            "the protection was lifted: the instance refresh replaced a runner while it was "
+            "protected, which would have cut its job short."
+        )
         set_scale_in_protection(
-            autoscaling_client,
-            asg_name,
-            protected_instance_ids
-            & in_service_instance_ids(autoscaling_client, asg_name),
-            False,
+            autoscaling_client, asg_name, protected_instance_ids, False
         )
 
         # Verify the log group still exists and wasn't recreated
