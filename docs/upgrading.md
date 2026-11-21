@@ -82,14 +82,15 @@ the pool keeps working on the old runners. The failure shows only in the refresh
   > Waiting for remaining instances to be available. For example: i-0348eed3561f5338d is protected. Remove instance
   > scale-in protection to continue.
 
-- It replaces nothing in the meantime: the runners in service and the warm pool stay on the old launch template
-  version, and no scaling activity is recorded.
+- In the meantime it replaces runners in service that aren't protected, but it doesn't get to the warm pool. In a
+  test for #112, where the pool's one runner was protected, it replaced nothing for the whole hour, and no scaling
+  activity was recorded.
 - About an hour after it started (63 minutes in a test for #112), its `Status` becomes `Failed`:
 
   > Refresh could not be completed because one or more replacements were not successful. For example:
   > i-0348eed3561f5338d is protected.
 
-Every runner then stays on the old launch template version, the warm pool included. Once no job is running, lift the
+The protected runner and the warm pool then stay on the old launch template version. Once no job is running, lift the
 protection and start the refresh by hand, as described in
 [If the pool's own runner applied the upgrade](#if-the-pools-own-runner-applied-the-upgrade). A later
 `terraform apply` that changes the launch template also starts a new refresh.

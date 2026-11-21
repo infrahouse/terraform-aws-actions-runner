@@ -143,9 +143,10 @@ job starts, and `gha_postrun.sh` turns it off when the job ends. The refresh set
 
 - **`Wait`** (since 6.0.0): the refresh waits for the job to end and replaces the runner once the protection is lifted.
   This matters most when the change is applied by a CD job on the pool's own runner: that runner is protected when
-  the refresh starts. While it waits, the refresh replaces nothing else, the warm pool included. AWS waits up to one
-  hour; if a runner is still protected after that, the refresh fails and the runners stay on the old version until a
-  refresh is started by hand (see [When the refresh fails](upgrading.md#when-the-refresh-fails)).
+  the refresh starts. While it waits, the refresh replaces runners that aren't protected but doesn't get to the warm
+  pool. AWS waits up to one hour; if a runner is still protected after that, the refresh fails, and that runner and
+  the warm pool stay on the old version until a refresh is started by hand (see
+  [When the refresh fails](upgrading.md#when-the-refresh-fails)).
 - **`Ignore`**, the AWS provider's default and what the module used up to 5.0.0, leaves protected runners out and
   replaces them only if their protection is lifted before the refresh ends. When the change is applied by a job on
   the pool's own runner and the refresh ends before the job, the refresh ends `Successful` with that runner still on
