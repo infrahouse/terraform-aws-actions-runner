@@ -12,9 +12,9 @@ Test upgrades from earlier releases to the current version.
 
 Each upgrade is applied to a settled pool while every runner in service is protected from
 scale-in, as the runner that runs a CD job is (``gha_prerun.sh``). The protection is lifted after
-the apply, as ``gha_postrun.sh`` does when the job ends, once the refresh is done with the runners
-in service or after a few minutes. The instance refresh must wait for it and then replace those
-runners, not skip them and report success (issue #112).
+the apply, as ``gha_postrun.sh`` does when the job ends: once the refresh has ended, or after
+half an hour if it hasn't. The instance refresh must wait for it and then replace those runners,
+not skip them and report success (issue #112).
 """
 
 import json
@@ -43,9 +43,9 @@ from tests.conftest import (
 
 # How long after the upgrade's apply the runners stay protected from scale-in at most: the rest
 # of the CD job that ran the apply, which can outlast the refresh. Long enough for a refresh that
-# skips protected runners to be done with the runners in service, and well under the hour that a
+# ignores protected runners to replace the warm pool and end, and well under the hour that a
 # refresh with ScaleInProtectedInstances=Wait waits for the protection to be lifted.
-PROTECTION_HOLD_SECONDS = 600
+PROTECTION_HOLD_SECONDS = 1800
 
 # How long the pool may take to settle before the upgrade: a warm pool instance bootstraps
 # before it hibernates, and the bootstrap lifecycle hook times out after 20 minutes.
@@ -181,16 +181,17 @@ def wait_for_settled_pool(
         time.sleep(POLL_SECONDS)
 
 
-def wait_for_live_pool_refresh(
+def wait_for_instance_refresh_end(
     autoscaling_client, asg_name: str, timeout: int = PROTECTION_HOLD_SECONDS
 ) -> None:
     """
-    Wait until the latest instance refresh is done with the instances in service.
+    Wait until the latest instance refresh has ended, or for ``timeout`` seconds at most.
 
-    That is when the refresh has ended, or has no instances in service left to update
-    (``LivePoolProgress.InstancesToUpdate`` is 0) while it works on the warm pool. A refresh
-    that skips protected instances has none left from the start, and reports 0% for the live
-    pool; one that waits for them doesn't, and this returns after ``timeout`` seconds.
+    A refresh that ignores protected instances leaves them out only while they are protected:
+    if the protection is lifted before the refresh ends, the refresh replaces them after all.
+    So it skips them only if it ends first, as it does at once when it has nothing else to
+    replace. A refresh that waits for protected instances doesn't end while they are, and this
+    returns after ``timeout`` seconds.
 
     :param autoscaling_client: Boto3 Auto Scaling client.
     :param asg_name: Auto Scaling group name.
@@ -201,26 +202,16 @@ def wait_for_live_pool_refresh(
         refreshes = autoscaling_client.describe_instance_refreshes(
             AutoScalingGroupName=asg_name, MaxRecords=1
         )["InstanceRefreshes"]
-        if refreshes:
-            refresh = refreshes[0]
-            live_pool = refresh.get("ProgressDetails", {}).get("LivePoolProgress")
-            live_pool_done = (
-                live_pool is not None and live_pool.get("InstancesToUpdate") == 0
+        if refreshes and refreshes[0]["Status"] not in ("Pending", "InProgress"):
+            LOG.info(
+                "Instance refresh %s has ended: Status %s",
+                refreshes[0]["InstanceRefreshId"],
+                refreshes[0]["Status"],
             )
-            if refresh["Status"] not in ("Pending", "InProgress") or live_pool_done:
-                LOG.info(
-                    "Instance refresh %s is done with the instances in service: "
-                    "Status %s, LivePoolProgress %s",
-                    refresh["InstanceRefreshId"],
-                    refresh["Status"],
-                    live_pool,
-                )
-                return
+            return
         time.sleep(POLL_SECONDS)
     LOG.info(
-        "The instance refresh of %s isn't done with the instances in service after %d seconds",
-        asg_name,
-        timeout,
+        "The instance refresh of %s hasn't ended after %d seconds", asg_name, timeout
     )
 
 
@@ -371,8 +362,8 @@ def test_module_migration(
     3. Wait for the pool to settle, then protect every runner in service from scale-in, as
        ``gha_prerun.sh`` does for the runner that runs the CD job
     4. Upgrade to the current version, with ``root_volume_size`` if set
-    5. Once the refresh is done with the runners in service, or after
-       ``PROTECTION_HOLD_SECONDS``, lift the protection, as ``gha_postrun.sh`` does
+    5. Once the refresh has ended, or after ``PROTECTION_HOLD_SECONDS``, lift the
+       protection, as ``gha_postrun.sh`` does
     6. Verify the log group has the same ARN and still holds the test message
     7. Verify the runners come back online after the instance refresh
     8. Verify no instance in service before the upgrade still is, and every instance in
@@ -545,9 +536,8 @@ def test_module_migration(
 
         # The apply starts the refresh and returns. The CD job goes on, can outlast the
         # refresh, and when it ends gha_postrun.sh lifts the protection. Lift it once the
-        # refresh is done with the runners in service, so that a refresh that skipped them
-        # can't come back for them, or after a few minutes if it waits for them.
-        wait_for_live_pool_refresh(autoscaling_client, asg_name)
+        # refresh has ended, or after PROTECTION_HOLD_SECONDS if it waits for the runners.
+        wait_for_instance_refresh_end(autoscaling_client, asg_name)
         log_instance_refresh(
             autoscaling_client, asg_name, "before the protection is lifted"
         )
@@ -615,7 +605,7 @@ def test_module_migration(
             assert not old_instance_ids & new_instance_ids, (
                 f"Instances {sorted(old_instance_ids & new_instance_ids)} were in service "
                 f"before the upgrade from {from_version}, protected from scale-in after the "
-                "apply until the refresh was done with the instances in service (at most "
+                "apply until the refresh ended (or for at most "
                 f"{PROTECTION_HOLD_SECONDS} seconds), and still are: the instance refresh "
                 "did not replace them."
             )
