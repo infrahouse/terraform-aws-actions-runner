@@ -204,14 +204,14 @@ To check, compare each instance's launch template version with the ASG's. `<asg>
 
 ```bash
 aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names <asg> \
-  --query 'AutoScalingGroups[0].{LaunchTemplateVersion: LaunchTemplate.Version,
+  --query 'AutoScalingGroups[0].{LaunchTemplateVersion: LaunchTemplate.Version
+      || MixedInstancesPolicy.LaunchTemplate.LaunchTemplateSpecification.Version,
     Instances: Instances[].[InstanceId, LaunchTemplate.Version, LifecycleState, ProtectedFromScaleIn]}'
 ```
 
-An instance whose version is lower than `LaunchTemplateVersion` wasn't replaced. In a pool that sets
-`on_demand_base_capacity`, the ASG uses a mixed instances policy, and its version is in
-`MixedInstancesPolicy.LaunchTemplate.LaunchTemplateSpecification.Version` instead of `LaunchTemplate.Version`.
-Then look at the most recent refresh:
+An instance whose version is lower than `LaunchTemplateVersion` wasn't replaced. For a pool that sets
+`on_demand_base_capacity`, `LaunchTemplateVersion` comes from the ASG's mixed instances policy. Then look at the most
+recent refresh:
 
 ```bash
 aws autoscaling describe-instance-refreshes --auto-scaling-group-name <asg> --max-records 1 \
