@@ -187,9 +187,10 @@ def wait_for_live_pool_refresh(
     """
     Wait until the latest instance refresh is done with the instances in service.
 
-    That is when the refresh has ended, or its ``LivePoolProgress`` is 100% while it works on
-    the warm pool. A refresh that skips protected instances gets there while they are still
-    protected; one that waits for them doesn't, and this returns after ``timeout`` seconds.
+    That is when the refresh has ended, or has no instances in service left to update
+    (``LivePoolProgress.InstancesToUpdate`` is 0) while it works on the warm pool. A refresh
+    that skips protected instances has none left from the start, and reports 0% for the live
+    pool; one that waits for them doesn't, and this returns after ``timeout`` seconds.
 
     :param autoscaling_client: Boto3 Auto Scaling client.
     :param asg_name: Auto Scaling group name.
@@ -202,21 +203,17 @@ def wait_for_live_pool_refresh(
         )["InstanceRefreshes"]
         if refreshes:
             refresh = refreshes[0]
-            live_pool_progress = (
-                refresh.get("ProgressDetails", {})
-                .get("LivePoolProgress", {})
-                .get("PercentageComplete")
+            live_pool = refresh.get("ProgressDetails", {}).get("LivePoolProgress")
+            live_pool_done = (
+                live_pool is not None and live_pool.get("InstancesToUpdate") == 0
             )
-            if (
-                refresh["Status"] not in ("Pending", "InProgress")
-                or live_pool_progress == 100
-            ):
+            if refresh["Status"] not in ("Pending", "InProgress") or live_pool_done:
                 LOG.info(
                     "Instance refresh %s is done with the instances in service: "
-                    "Status %s, LivePoolProgress %s%%",
+                    "Status %s, LivePoolProgress %s",
                     refresh["InstanceRefreshId"],
                     refresh["Status"],
-                    live_pool_progress,
+                    live_pool,
                 )
                 return
         time.sleep(POLL_SECONDS)
