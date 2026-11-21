@@ -130,6 +130,29 @@ The warm pool keeps instances in a hibernated state:
 4. Instance terminates
 ```
 
+### Instance Refresh
+
+A change to the launch template (a new AMI, new user data, a new instance role, a bigger root volume) gives it a new
+version. `terraform apply` points the ASG at the new version and starts a rolling instance refresh
+(`min_healthy_percentage = 100`), which replaces every runner through the launch and termination sequences above.
+Terraform starts the refresh and returns; it doesn't wait for the refresh to finish.
+
+A runner protects itself from scale-in for the length of every job: `gha_prerun.sh` turns the protection on when a
+job starts, and `gha_postrun.sh` turns it off when the job ends. The refresh sets
+`scale_in_protected_instances = "Wait"` for those runners:
+
+- **`Wait`** (since 6.0.0): the refresh waits for the job to end and replaces the runner once the protection is lifted.
+  This matters most when the change is applied by a CD job on the pool's own runner: that runner is protected when
+  the refresh starts. While it waits, the refresh replaces nothing else, the warm pool included. AWS waits up to one
+  hour; if a runner is still protected after that, the refresh fails and the runners stay on the old version until a
+  refresh is started by hand (see [When the refresh fails](upgrading.md#when-the-refresh-fails)).
+- **`Ignore`**, the AWS provider's default and what the module used up to 5.0.0, leaves protected runners out and
+  replaces them only if their protection is lifted before the refresh ends. When the change is applied by a job on
+  the pool's own runner and the refresh ends before the job, the refresh ends `Successful` with that runner still on
+  the old version ([#112](https://github.com/infrahouse/terraform-aws-actions-runner/issues/112)).
+- **`Refresh`** replaces protected runners right away, so it would terminate runners in the middle of long-running
+  jobs.
+
 ## Scaling Behavior
 
 ### Scale Out (Add Runners)
