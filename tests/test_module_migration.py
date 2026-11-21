@@ -10,10 +10,11 @@ Test upgrades from earlier releases to the current version.
 - From 5.0.0, the first release with those prefixes: nothing in the launch template changes, so the
   test also changes the root volume size to give the instance refresh something to replace.
 
-Each upgrade is applied while every runner in service is protected from scale-in, as the runner
-that runs a CD job is (``gha_prerun.sh``), and the protection is lifted a few minutes after the
-apply, as ``gha_postrun.sh`` does when the job ends. The instance refresh must wait for it and
-then replace those runners, not skip them and report success (issue #112).
+Each upgrade is applied to a settled pool while every runner in service is protected from
+scale-in, as the runner that runs a CD job is (``gha_prerun.sh``). The protection is lifted after
+the apply, as ``gha_postrun.sh`` does when the job ends, once the refresh is done with the runners
+in service or after a few minutes. The instance refresh must wait for it and then replace those
+runners, not skip them and report success (issue #112).
 """
 
 import json
@@ -40,10 +41,18 @@ from tests.conftest import (
     GH_APP_ID,
 )
 
-# How long after the upgrade's apply the runners stay protected from scale-in: the rest of
-# the CD job that ran the apply. Well under the hour that a refresh with
-# ScaleInProtectedInstances=Wait waits for the protection to be lifted.
-PROTECTION_HOLD_SECONDS = 300
+# How long after the upgrade's apply the runners stay protected from scale-in at most: the rest
+# of the CD job that ran the apply, which can outlast the refresh. Long enough for a refresh that
+# skips protected runners to be done with the runners in service, and well under the hour that a
+# refresh with ScaleInProtectedInstances=Wait waits for the protection to be lifted.
+PROTECTION_HOLD_SECONDS = 600
+
+# How long the pool may take to settle before the upgrade: a warm pool instance bootstraps
+# before it hibernates, and the bootstrap lifecycle hook times out after 20 minutes.
+SETTLE_TIMEOUT_SECONDS = 1800
+
+# How often to look at the pool and the refresh while waiting.
+POLL_SECONDS = 30
 
 
 def in_service_instance_ids(autoscaling_client, asg_name: str) -> Set[str]:
@@ -120,6 +129,101 @@ def log_instance_refresh(autoscaling_client, asg_name: str, when: str) -> None:
         refresh.get("StartTime"),
         refresh.get("EndTime"),
         json.dumps(refresh.get("Preferences"), default=str),
+    )
+
+
+def wait_for_settled_pool(
+    autoscaling_client, asg_name: str, timeout: int = SETTLE_TIMEOUT_SECONDS
+) -> None:
+    """
+    Wait until every instance of the ASG is in service and its warm pool is full and warmed.
+
+    A pool that runs its own CD applies an upgrade from a settled pool. Right after the ASG
+    is created its warm pool instances are still bootstrapping, and a refresh that starts then
+    waits for them before it gets to the protected runners.
+
+    :param autoscaling_client: Boto3 Auto Scaling client.
+    :param asg_name: Auto Scaling group name.
+    :param timeout: How long to wait, in seconds.
+    :raises AssertionError: If the pool hasn't settled after ``timeout`` seconds.
+    """
+    deadline = time.time() + timeout
+    while True:
+        group = autoscaling_client.describe_auto_scaling_groups(
+            AutoScalingGroupNames=[asg_name]
+        )["AutoScalingGroups"][0]
+        unsettled = [
+            f"{instance['InstanceId']} {instance['LifecycleState']}"
+            for instance in group["Instances"]
+            if instance["LifecycleState"] != "InService"
+        ]
+        warm_pool = autoscaling_client.describe_warm_pool(AutoScalingGroupName=asg_name)
+        config = warm_pool.get("WarmPoolConfiguration")
+        if config:
+            warmed = f"Warmed:{config['PoolState']}"
+            unsettled += [
+                f"{instance['InstanceId']} {instance['LifecycleState']}"
+                for instance in warm_pool["Instances"]
+                if instance["LifecycleState"] != warmed
+            ]
+            if len(warm_pool["Instances"]) < config["MinSize"]:
+                unsettled.append(
+                    f"warm pool has {len(warm_pool['Instances'])} of at least "
+                    f"{config['MinSize']} instances"
+                )
+        if not unsettled:
+            LOG.info("ASG %s has settled", asg_name)
+            return
+        assert (
+            time.time() < deadline
+        ), f"ASG {asg_name} hasn't settled after {timeout} seconds: {unsettled}"
+        LOG.info("Waiting for ASG %s to settle: %s", asg_name, ", ".join(unsettled))
+        time.sleep(POLL_SECONDS)
+
+
+def wait_for_live_pool_refresh(
+    autoscaling_client, asg_name: str, timeout: int = PROTECTION_HOLD_SECONDS
+) -> None:
+    """
+    Wait until the latest instance refresh is done with the instances in service.
+
+    That is when the refresh has ended, or its ``LivePoolProgress`` is 100% while it works on
+    the warm pool. A refresh that skips protected instances gets there while they are still
+    protected; one that waits for them doesn't, and this returns after ``timeout`` seconds.
+
+    :param autoscaling_client: Boto3 Auto Scaling client.
+    :param asg_name: Auto Scaling group name.
+    :param timeout: How long to wait at most, in seconds.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        refreshes = autoscaling_client.describe_instance_refreshes(
+            AutoScalingGroupName=asg_name, MaxRecords=1
+        )["InstanceRefreshes"]
+        if refreshes:
+            refresh = refreshes[0]
+            live_pool_progress = (
+                refresh.get("ProgressDetails", {})
+                .get("LivePoolProgress", {})
+                .get("PercentageComplete")
+            )
+            if (
+                refresh["Status"] not in ("Pending", "InProgress")
+                or live_pool_progress == 100
+            ):
+                LOG.info(
+                    "Instance refresh %s is done with the instances in service: "
+                    "Status %s, LivePoolProgress %s%%",
+                    refresh["InstanceRefreshId"],
+                    refresh["Status"],
+                    live_pool_progress,
+                )
+                return
+        time.sleep(POLL_SECONDS)
+    LOG.info(
+        "The instance refresh of %s isn't done with the instances in service after %d seconds",
+        asg_name,
+        timeout,
     )
 
 
@@ -267,10 +371,11 @@ def test_module_migration(
 
     1. Deploy ``from_version``
     2. Verify the deregistration log group exists and write a test message to it
-    3. Protect every runner in service from scale-in, as ``gha_prerun.sh`` does for the
-       runner that runs the CD job
+    3. Wait for the pool to settle, then protect every runner in service from scale-in, as
+       ``gha_prerun.sh`` does for the runner that runs the CD job
     4. Upgrade to the current version, with ``root_volume_size`` if set
-    5. A few minutes after the apply, lift the protection, as ``gha_postrun.sh`` does
+    5. Once the refresh is done with the runners in service, or after
+       ``PROTECTION_HOLD_SECONDS``, lift the protection, as ``gha_postrun.sh`` does
     6. Verify the log group has the same ARN and still holds the test message
     7. Verify the runners come back online after the instance refresh
     8. Verify no instance in service before the upgrade still is, and every instance in
@@ -424,6 +529,7 @@ def test_module_migration(
     # protects a runner from scale-in for the length of its job. Protect every runner in
     # service, so that the refresh the apply starts can replace none of them until the
     # protection is lifted.
+    wait_for_settled_pool(autoscaling_client, asg_name)
     protected_instance_ids = in_service_instance_ids(autoscaling_client, asg_name)
     assert (
         protected_instance_ids
@@ -440,12 +546,11 @@ def test_module_migration(
         LOG.info("Phase 2 output: %s", json.dumps(migrated_output, indent=4))
         log_instance_refresh(autoscaling_client, asg_name, "after the apply")
 
-        # The apply starts the refresh and returns. The CD job ends a few minutes later, and
-        # gha_postrun.sh lifts the protection.
-        LOG.info(
-            "Lifting the scale-in protection in %d seconds", PROTECTION_HOLD_SECONDS
-        )
-        time.sleep(PROTECTION_HOLD_SECONDS)
+        # The apply starts the refresh and returns. The CD job goes on, can outlast the
+        # refresh, and when it ends gha_postrun.sh lifts the protection. Lift it once the
+        # refresh is done with the runners in service, so that a refresh that skipped them
+        # can't come back for them, or after a few minutes if it waits for them.
+        wait_for_live_pool_refresh(autoscaling_client, asg_name)
         log_instance_refresh(
             autoscaling_client, asg_name, "before the protection is lifted"
         )
@@ -512,9 +617,10 @@ def test_module_migration(
             LOG.info("Instances in service after the upgrade: %s", new_instance_ids)
             assert not old_instance_ids & new_instance_ids, (
                 f"Instances {sorted(old_instance_ids & new_instance_ids)} were in service "
-                f"before the upgrade from {from_version}, protected from scale-in until "
-                f"{PROTECTION_HOLD_SECONDS} seconds after the apply, and still are: "
-                "the instance refresh did not replace them."
+                f"before the upgrade from {from_version}, protected from scale-in after the "
+                "apply until the refresh was done with the instances in service (at most "
+                f"{PROTECTION_HOLD_SECONDS} seconds), and still are: the instance refresh "
+                "did not replace them."
             )
             assert_in_service_on_asg_launch_template_version(
                 autoscaling_client, asg_name
