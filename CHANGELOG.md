@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [6.0.0] - 2026-11-22
+
+### Bug Fixes
+
+- Make the instance refresh wait for runners protected from scale-in ([#112](https://github.com/infrahouse/terraform-aws-actions-runner/issues/112)) ([#114](https://github.com/infrahouse/terraform-aws-actions-runner/issues/114))
+
+### Documentation
+
+- Add the 6.0.0 upgrade guide: delete role_name, the instance role is replaced ([#111](https://github.com/infrahouse/terraform-aws-actions-runner/issues/111))
+- Describe the instance role as actions-runner-instance-<pool> ([#111](https://github.com/infrahouse/terraform-aws-actions-runner/issues/111))
+
+### Features
+
+- Remove role_name and replace the instance role with actions-runner-instance-<pool> ([#111](https://github.com/infrahouse/terraform-aws-actions-runner/issues/111))
+
+### Testing
+
+- Expect the instance role named from the pool and no role_name ([#111](https://github.com/infrahouse/terraform-aws-actions-runner/issues/111))
+
 ## [5.0.0] - 2026-11-20
 
 ### Documentation
