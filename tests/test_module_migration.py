@@ -13,6 +13,12 @@ Test upgrades from earlier releases to the current version.
 
 Both releases take ``role_name``, so phase 1 sets it, as callers who run more than one pool do.
 Phase 2 doesn't: the current version has no such input.
+
+Each upgrade is applied to a settled pool while every runner in service is protected from
+scale-in, as the runner that runs a CD job is (``gha_prerun.sh``). The protection is lifted after
+the apply, as ``gha_postrun.sh`` does when the job ends: once the refresh has ended, or after
+half an hour if it hasn't. The instance refresh must wait for it and then replace those runners,
+not skip them and report success (issue #112).
 """
 
 import json
@@ -39,6 +45,19 @@ from tests.conftest import (
     get_tmp_token,
     GH_APP_ID,
 )
+
+# How long after the upgrade's apply the runners stay protected from scale-in at most: the rest
+# of the CD job that ran the apply, which can outlast the refresh. Long enough for a refresh that
+# ignores protected runners to replace the warm pool and end, and well under the hour that a
+# refresh with ScaleInProtectedInstances=Wait waits for the protection to be lifted.
+PROTECTION_HOLD_SECONDS = 1800
+
+# How long the pool may take to settle before the upgrade: a warm pool instance bootstraps
+# before it hibernates, and the bootstrap lifecycle hook times out after 20 minutes.
+SETTLE_TIMEOUT_SECONDS = 1800
+
+# How often to look at the pool and the refresh while waiting.
+POLL_SECONDS = 30
 
 
 def in_service_instance_ids(autoscaling_client, asg_name: str) -> Set[str]:
@@ -76,6 +95,191 @@ def instance_profile_of_role(iam_client, role_name: str) -> Dict:
     ]
     assert len(profiles) == 1, f"Role {role_name} is in instance profiles {profiles}"
     return profiles[0]
+
+
+def set_scale_in_protection(
+    autoscaling_client, asg_name: str, instance_ids: Set[str], protected: bool
+) -> None:
+    """
+    Protect instances from scale-in, or lift the protection.
+
+    ``gha_prerun.sh`` protects a runner when a job starts, and ``gha_postrun.sh`` lifts the
+    protection when the job ends.
+
+    :param autoscaling_client: Boto3 Auto Scaling client.
+    :param asg_name: Auto Scaling group name.
+    :param instance_ids: Instances to change. They must be in service.
+    :param protected: True to protect the instances, False to lift the protection.
+    """
+    LOG.info(
+        "%s scale-in protection on %s",
+        "Setting" if protected else "Lifting",
+        sorted(instance_ids),
+    )
+    if instance_ids:
+        autoscaling_client.set_instance_protection(
+            InstanceIds=sorted(instance_ids),
+            AutoScalingGroupName=asg_name,
+            ProtectedFromScaleIn=protected,
+        )
+
+
+def log_instance_refresh(autoscaling_client, asg_name: str, when: str) -> None:
+    """
+    Log the ASG's most recent instance refresh: status, reason, progress, times and preferences.
+
+    :param autoscaling_client: Boto3 Auto Scaling client.
+    :param asg_name: Auto Scaling group name.
+    :param when: The point in the test, for the log message.
+    """
+    refreshes = autoscaling_client.describe_instance_refreshes(
+        AutoScalingGroupName=asg_name, MaxRecords=1
+    )["InstanceRefreshes"]
+    if not refreshes:
+        LOG.info("No instance refresh of %s %s", asg_name, when)
+        return
+    refresh = refreshes[0]
+    LOG.info(
+        "Instance refresh %s %s: Status %s, StatusReason %r, PercentageComplete %s, "
+        "StartTime %s, EndTime %s, Preferences %s",
+        refresh["InstanceRefreshId"],
+        when,
+        refresh["Status"],
+        refresh.get("StatusReason"),
+        refresh.get("PercentageComplete"),
+        refresh.get("StartTime"),
+        refresh.get("EndTime"),
+        json.dumps(refresh.get("Preferences"), default=str),
+    )
+
+
+def wait_for_settled_pool(
+    autoscaling_client, asg_name: str, timeout: int = SETTLE_TIMEOUT_SECONDS
+) -> None:
+    """
+    Wait until every instance of the ASG is in service and its warm pool is full and warmed.
+
+    A pool that runs its own CD applies an upgrade from a settled pool. Right after the ASG
+    is created its warm pool instances are still bootstrapping, and a refresh that starts then
+    waits for them before it gets to the protected runners.
+
+    :param autoscaling_client: Boto3 Auto Scaling client.
+    :param asg_name: Auto Scaling group name.
+    :param timeout: How long to wait, in seconds.
+    :raises AssertionError: If the pool hasn't settled after ``timeout`` seconds.
+    """
+    deadline = time.time() + timeout
+    while True:
+        group = autoscaling_client.describe_auto_scaling_groups(
+            AutoScalingGroupNames=[asg_name]
+        )["AutoScalingGroups"][0]
+        unsettled = [
+            f"{instance['InstanceId']} {instance['LifecycleState']}"
+            for instance in group["Instances"]
+            if instance["LifecycleState"] != "InService"
+        ]
+        warm_pool = autoscaling_client.describe_warm_pool(AutoScalingGroupName=asg_name)
+        config = warm_pool.get("WarmPoolConfiguration")
+        if config:
+            warmed = f"Warmed:{config['PoolState']}"
+            unsettled += [
+                f"{instance['InstanceId']} {instance['LifecycleState']}"
+                for instance in warm_pool["Instances"]
+                if instance["LifecycleState"] != warmed
+            ]
+            if len(warm_pool["Instances"]) < config["MinSize"]:
+                unsettled.append(
+                    f"warm pool has {len(warm_pool['Instances'])} of at least "
+                    f"{config['MinSize']} instances"
+                )
+        if not unsettled:
+            LOG.info("ASG %s has settled", asg_name)
+            return
+        assert (
+            time.time() < deadline
+        ), f"ASG {asg_name} hasn't settled after {timeout} seconds: {unsettled}"
+        LOG.info("Waiting for ASG %s to settle: %s", asg_name, ", ".join(unsettled))
+        time.sleep(POLL_SECONDS)
+
+
+def wait_for_instance_refresh_end(
+    autoscaling_client, asg_name: str, timeout: int = PROTECTION_HOLD_SECONDS
+) -> None:
+    """
+    Wait until the latest instance refresh has ended, or for ``timeout`` seconds at most.
+
+    A refresh that ignores protected instances leaves them out only while they are protected:
+    if the protection is lifted before the refresh ends, the refresh replaces them after all.
+    So it skips them only if it ends first, as it does at once when it has nothing else to
+    replace. A refresh that waits for protected instances doesn't end while they are, and this
+    returns after ``timeout`` seconds.
+
+    :param autoscaling_client: Boto3 Auto Scaling client.
+    :param asg_name: Auto Scaling group name.
+    :param timeout: How long to wait at most, in seconds.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        refreshes = autoscaling_client.describe_instance_refreshes(
+            AutoScalingGroupName=asg_name, MaxRecords=1
+        )["InstanceRefreshes"]
+        if refreshes and refreshes[0]["Status"] not in ("Pending", "InProgress"):
+            LOG.info(
+                "Instance refresh %s has ended: Status %s",
+                refreshes[0]["InstanceRefreshId"],
+                refreshes[0]["Status"],
+            )
+            return
+        time.sleep(POLL_SECONDS)
+    LOG.info(
+        "The instance refresh of %s hasn't ended after %d seconds", asg_name, timeout
+    )
+
+
+def assert_in_service_on_asg_launch_template_version(
+    autoscaling_client, asg_name: str
+) -> None:
+    """
+    Fail unless every instance in service runs the launch template version the ASG uses.
+
+    A refresh that skips a runner leaves it on the version from before the upgrade, while the
+    ASG already points at the new one.
+
+    :param autoscaling_client: Boto3 Auto Scaling client.
+    :param asg_name: Auto Scaling group name.
+    :raises AssertionError: If an instance in service is on another launch template or version.
+    """
+    group = autoscaling_client.describe_auto_scaling_groups(
+        AutoScalingGroupNames=[asg_name]
+    )["AutoScalingGroups"][0]
+    assert "LaunchTemplate" in group, f"ASG {asg_name} has no launch template"
+    asg_template = group["LaunchTemplate"]
+    LOG.info(
+        "ASG %s uses launch template %s version %s",
+        asg_name,
+        asg_template["LaunchTemplateId"],
+        asg_template["Version"],
+    )
+    stale = {}
+    for instance in group["Instances"]:
+        if instance["LifecycleState"] != "InService":
+            continue
+        template = instance["LaunchTemplate"]
+        LOG.info(
+            "Instance %s uses launch template %s version %s",
+            instance["InstanceId"],
+            template["LaunchTemplateId"],
+            template["Version"],
+        )
+        if (template["LaunchTemplateId"], template["Version"]) != (
+            asg_template["LaunchTemplateId"],
+            asg_template["Version"],
+        ):
+            stale[instance["InstanceId"]] = template["Version"]
+    assert not stale, (
+        f"Instances in service on a launch template version other than the ASG's "
+        f"{asg_template['Version']} (instance: version): {stale}"
+    )
 
 
 def write_main_tf(
@@ -169,14 +373,21 @@ def test_module_migration(
 
     1. Deploy ``from_version`` with a ``role_name`` that starts with ``actions-runner-``
     2. Verify the deregistration log group exists and write a test message to it
-    3. Upgrade to the current version, without ``role_name``
-    4. Verify the log group has the same ARN and still holds the test message
-    5. Verify the runners come back online after the instance refresh
-    6. Verify no instance from step 1 is still in service: the instance role was replaced,
-       and runners launched with the old role hold credentials of a deleted role
-    7. Verify the instance role AWS reports is ``actions-runner-instance-<pool>`` and the
+    3. Wait for the pool to settle, then protect every runner in service from scale-in, as
+       ``gha_prerun.sh`` does for the runner that runs the CD job
+    4. Upgrade to the current version, without ``role_name``
+    5. Once the refresh has ended, or after ``PROTECTION_HOLD_SECONDS``, verify every
+       protected runner is still in service (the refresh didn't cut its job short), then
+       lift the protection, as ``gha_postrun.sh`` does
+    6. Verify the log group has the same ARN and still holds the test message
+    7. Verify the runners come back online after the instance refresh
+    8. Verify no instance in service before the upgrade still is, and every instance in
+       service is on the ASG's launch template version: the refresh waited for the protected
+       runners and replaced them. The instance role was replaced, and runners launched with
+       the old role hold credentials of a deleted role
+    9. Verify the instance role AWS reports is ``actions-runner-instance-<pool>`` and the
        Lambda roles carry the same ``<pool>``, the one the pool had before the upgrade
-    8. Verify the instance profile from step 1 is the same profile and now holds the new role
+    10. Verify the instance profile from step 1 is the same profile and now holds the new role
     """
     subnet_public_ids = service_network["subnet_public_ids"]["value"]
     subnet_private_ids = service_network["subnet_private_ids"]["value"]
@@ -333,6 +544,18 @@ def test_module_migration(
     write_main_tf(terraform_module_dir, source="../..")
     LOG.info("Generated main.tf with local source")
 
+    # The upgrade is applied by a CD job on one of the pool's own runners, and gha_prerun.sh
+    # protects a runner from scale-in for the length of its job. Protect every runner in
+    # service, so that the refresh the apply starts can replace none of them until the
+    # protection is lifted.
+    wait_for_settled_pool(autoscaling_client, asg_name)
+    protected_instance_ids = in_service_instance_ids(autoscaling_client, asg_name)
+    assert (
+        protected_instance_ids
+    ), "No instances in service to protect before the upgrade"
+    old_instance_ids |= protected_instance_ids
+    set_scale_in_protection(autoscaling_client, asg_name, protected_instance_ids, True)
+
     # Apply the migration
     with terraform_apply(
         terraform_module_dir,
@@ -340,6 +563,29 @@ def test_module_migration(
         json_output=True,
     ) as migrated_output:
         LOG.info("Phase 2 output: %s", json.dumps(migrated_output, indent=4))
+        log_instance_refresh(autoscaling_client, asg_name, "after the apply")
+
+        # The apply starts the refresh and returns. The CD job goes on, can outlast the
+        # refresh, and when it ends gha_postrun.sh lifts the protection. Lift it once the
+        # refresh has ended, or after PROTECTION_HOLD_SECONDS if it waits for the runners.
+        wait_for_instance_refresh_end(autoscaling_client, asg_name)
+        log_instance_refresh(
+            autoscaling_client, asg_name, "before the protection is lifted"
+        )
+        # Neither Wait nor Ignore touches a protected runner. A refresh that replaced one
+        # while it was protected (ScaleInProtectedInstances=Refresh) would cut its job short,
+        # and the checks after the lift would pass all the same.
+        gone = protected_instance_ids - in_service_instance_ids(
+            autoscaling_client, asg_name
+        )
+        assert not gone, (
+            f"Instances {sorted(gone)} were protected from scale-in and left service before "
+            "the protection was lifted: the instance refresh replaced a runner while it was "
+            "protected, which would have cut its job short."
+        )
+        set_scale_in_protection(
+            autoscaling_client, asg_name, protected_instance_ids, False
+        )
 
         # Verify the log group still exists and wasn't recreated
         response = logs_client.describe_log_groups(logGroupNamePrefix=log_group_name)
@@ -385,14 +631,24 @@ def test_module_migration(
                 test_role_arn=test_role_arn,
             )
 
-            # ensure_runners waited for the instance refresh. A runner launched before
-            # the upgrade holds credentials of the instance role that was just deleted.
+            # ensure_runners waited for the instance refresh. A runner it skipped stays on
+            # the old launch template version and holds credentials of the instance role
+            # that was just deleted.
+            log_instance_refresh(
+                autoscaling_client, asg_name, "after the runners are online"
+            )
             new_instance_ids = in_service_instance_ids(autoscaling_client, asg_name)
+            LOG.info("Instances in service before the upgrade: %s", old_instance_ids)
             LOG.info("Instances in service after the upgrade: %s", new_instance_ids)
             assert not old_instance_ids & new_instance_ids, (
-                f"Instances {sorted(old_instance_ids & new_instance_ids)} were launched by "
-                f"{from_version} with the old instance role and are still in service: "
-                "the upgrade did not roll the runners."
+                f"Instances {sorted(old_instance_ids & new_instance_ids)} were in service "
+                f"before the upgrade from {from_version}, protected from scale-in after the "
+                "apply until the refresh ended (or for at most "
+                f"{PROTECTION_HOLD_SECONDS} seconds), and still are: the instance refresh "
+                "did not replace them."
+            )
+            assert_in_service_on_asg_launch_template_version(
+                autoscaling_client, asg_name
             )
 
             # asg_name is the pool's name before the upgrade, so this also proves the

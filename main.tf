@@ -220,6 +220,14 @@ resource "aws_autoscaling_group" "actions-runner" {
     strategy = "Rolling"
     preferences {
       min_healthy_percentage = 100
+      # A runner protects itself from scale-in for the length of every job (gha_prerun.sh sets the
+      # protection, gha_postrun.sh lifts it). With the provider's default, Ignore, a refresh leaves
+      # such a runner out until the protection is lifted, and if it ends first, it ends Successful
+      # with the runner still on the old launch template version. That is what happens when a job
+      # on the pool's own runner applies the change. Wait lets the job finish and replaces the
+      # runner once the protection is lifted; AWS waits one hour, then fails the refresh. Refresh
+      # would terminate runners in the middle of long jobs. See issue #112.
+      scale_in_protected_instances = "Wait"
     }
   }
 

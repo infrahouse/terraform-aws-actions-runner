@@ -3,7 +3,9 @@
 ## Upgrading to 6.0.0 (instance role named from the pool)
 
 6.0.0 names the instance role from the pool, the way the Lambda roles are named, and removes the `role_name` input
-([#111](https://github.com/infrahouse/terraform-aws-actions-runner/issues/111)).
+([#111](https://github.com/infrahouse/terraform-aws-actions-runner/issues/111)). Its instance refresh also waits for
+runners that are protected from scale-in instead of skipping them
+([#112](https://github.com/infrahouse/terraform-aws-actions-runner/issues/112)).
 
 ### What changes
 
@@ -27,12 +29,81 @@
 - **The runners roll, as in 5.0.0.** The instance role name is passed to the instances as a Puppet fact, so the launch
   template gets a new version and the ASG starts an instance refresh: new runners launch with the new role, then the
   old ones are terminated.
+- **The instance refresh waits for protected runners.** The ASG's `instance_refresh` preferences are updated in
+  place, `scale_in_protected_instances` from `Ignore` to `Wait`, and the refresh this apply starts already runs with
+  `Wait`: see [The instance refresh waits for protected runners](#the-instance-refresh-waits-for-protected-runners).
 - From 5.0.0, nothing else is replaced: the Lambda roles, functions and packages don't change.
 
 Runners launched before the upgrade keep credentials of the deleted role until they are replaced. On those runners,
 AWS calls fail: jobs that use the instance role during the upgrade can fail, and an old runner can stay in
 `Terminating:Wait` for up to the termination hook's 30-minute heartbeat timeout, because it can't complete its own
-lifecycle hook. Upgrade when the pool is idle, or be ready to re-run jobs that were running at the time.
+lifecycle hook. Upgrade when the pool is idle, or be ready to re-run jobs that were running at the time. If a job on
+the pool's own runner applies the upgrade, that runner stays protected from scale-in after the job, and the refresh
+fails after an hour: see
+[When the pool's own runner applies the upgrade](#when-the-pools-own-runner-applies-the-upgrade).
+
+### The instance refresh waits for protected runners
+
+A runner protects itself from scale-in for the length of every job: `gha_prerun.sh` turns the protection on when a
+job starts, and `gha_postrun.sh` turns it off when the job ends. Up to 5.0.0 the instance refresh ran with
+`ScaleInProtectedInstances` set to `Ignore`, the AWS provider's default. With `Ignore` the refresh leaves a protected
+runner out, and replaces it only if the protection is lifted before the refresh ends. When the job that applies an
+upgrade runs on the pool's own runner, as it does in a pool that runs its own infrastructure's CD, that runner is
+protected from the moment the refresh starts until the job ends. If the refresh ended first (one with nothing else to
+replace ends in the second it starts), it ended `Successful` with the runner still on the old launch template version.
+Upgrades that were meant to roll the runners, 5.0.0 included, didn't. Before you upgrade a pool that was upgraded to
+5.0.0 this way, see [If the pool's own runner applied the upgrade](#if-the-pools-own-runner-applied-the-upgrade).
+
+From 6.0.0 the refresh runs with `ScaleInProtectedInstances` set to `Wait`:
+
+- A runner that is running a job is replaced after the job ends, once `gha_postrun.sh` lifts the protection. The CD
+  job that applied the change can finish on it.
+- AWS waits up to one hour for the protection to be lifted. If a runner is still protected after that, the refresh
+  fails, and the runners it hasn't replaced stay on the old launch template version.
+- A runner stays protected for more than an hour when its job runs longer than an hour, and after an upgrade that
+  replaces the instance role, as 6.0.0 does: see
+  [When the pool's own runner applies the upgrade](#when-the-pools-own-runner-applies-the-upgrade).
+- A `terraform apply` that starts a new refresh while one is still waiting cancels the waiting refresh and starts the
+  new one.
+
+`Refresh`, which replaces protected runners right away, isn't used: it would terminate runners in the middle of
+long-running jobs.
+
+#### When the refresh fails
+
+`terraform apply` starts the refresh and returns, so it doesn't report a refresh that fails later: it ends with
+`Apply complete!` and exit code 0. A `terraform plan` after the refresh failed shows `No changes`, because the ASG
+already points at the new launch template version. None of the module's CloudWatch alarms watches the refresh, and
+the pool keeps working on the old runners. The failure shows only in the refresh itself
+(`aws autoscaling describe-instance-refreshes --auto-scaling-group-name <asg>`):
+
+- While the refresh waits, its `Status` is `InProgress`, and its `StatusReason` names the protected runner:
+
+  > Waiting for remaining instances to be available. For example: i-0348eed3561f5338d is protected. Remove instance
+  > scale-in protection to continue.
+
+- In the meantime it replaces runners in service that aren't protected, but it doesn't get to the warm pool. In a
+  test for #112, where the pool's one runner was protected, it replaced nothing for the whole hour, and no scaling
+  activity was recorded.
+- About an hour after it started (63 minutes in a test for #112), its `Status` becomes `Failed`:
+
+  > Refresh could not be completed because one or more replacements were not successful. For example:
+  > i-0348eed3561f5338d is protected.
+
+The protected runner and the warm pool then stay on the old launch template version. Once no job is running, lift the
+protection and start the refresh by hand, as described in
+[If the pool's own runner applied the upgrade](#if-the-pools-own-runner-applied-the-upgrade). A later
+`terraform apply` that changes the launch template also starts a new refresh.
+
+#### When the pool's own runner applies the upgrade
+
+6.0.0 replaces the instance role. When the apply runs as a job on one of the pool's runners, that runner's
+credentials stop working during the apply, `gha_postrun.sh` can't lift the protection (`InvalidClientTokenId`), and
+the runner stays protected after its job ends. The refresh waits for it for an hour and then fails, and the runner
+stays on the old launch template version. Replace it by hand once no job is running, as described in
+[If the pool's own runner applied the upgrade](#if-the-pools-own-runner-applied-the-upgrade): lift the protection,
+then start the refresh. The same holds for any later upgrade that replaces the instance role. To avoid it, apply such
+an upgrade from a runner outside the pool.
 
 ### What you need to change
 
@@ -68,7 +139,7 @@ A pool on 4.x can upgrade straight to 6.0.0, in one `terraform apply`. Everythin
 [Upgrading to 5.0.0](#upgrading-to-500-iam-role-name-prefixes) applies: the Lambda roles are replaced, the Lambda
 packages are rebuilt, policies that match the old role names must be updated, and `python_version` must be
 `python3.12` or `python3.13`. The exception is its `role_name` part: delete `role_name` instead. The instance role
-becomes `actions-runner-instance-<pool>`, and the runners roll once.
+becomes `actions-runner-instance-<pool>`, and the runners roll once, with a refresh that waits for protected runners.
 
 ## Upgrading to 5.0.0 (IAM role name prefixes)
 
@@ -116,6 +187,75 @@ credentials of a role swapped into its profile). On those runners, AWS calls fai
 role during the upgrade can fail, and an old runner can't complete its own termination lifecycle hook, so it can stay
 in `Terminating:Wait` until the hook's heartbeat timeout (30 minutes) before it is terminated. Upgrade when the pool
 is idle, or be ready to re-run jobs that were running at the time.
+
+### If the pool's own runner applied the upgrade
+
+5.0.0's instance refresh leaves out a runner that is protected from scale-in until the refresh ends, and a runner is
+protected for the length of every job ([#112](https://github.com/infrahouse/terraform-aws-actions-runner/issues/112),
+fixed in 6.0.0). If the upgrade to 5.0.0 was applied by a job on the pool's own runner and the refresh ended before
+the job, the refresh skipped that runner and still ended `Successful`, so the runner can still be on the old launch
+template version. Its `gha_postrun.sh` ran with the deleted role's credentials and couldn't lift the protection, so
+the runner can also still be protected, with no job running on it. The upgrade to 6.0.0 rolls the runners again, but
+its refresh waits for a runner that is still protected and fails after an hour, so lift such a protection (step 2
+below) before you upgrade.
+
+To check, compare each instance's launch template version with the ASG's. `<asg>` is the module's
+`autoscaling_group_name` output:
+
+```bash
+aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names <asg> \
+  --query 'AutoScalingGroups[0].{LaunchTemplateVersion: LaunchTemplate.Version
+      || MixedInstancesPolicy.LaunchTemplate.LaunchTemplateSpecification.Version,
+    Instances: Instances[].[InstanceId, LaunchTemplate.Version, LifecycleState, ProtectedFromScaleIn]}'
+```
+
+An instance whose version is lower than `LaunchTemplateVersion` wasn't replaced. For a pool that sets
+`on_demand_base_capacity`, `LaunchTemplateVersion` comes from the ASG's mixed instances policy. Then look at the most
+recent refresh:
+
+```bash
+aws autoscaling describe-instance-refreshes --auto-scaling-group-name <asg> --max-records 1 \
+  --query 'InstanceRefreshes[0].{Status: Status, StatusReason: StatusReason, StartTime: StartTime,
+    EndTime: EndTime, ScaleInProtectedInstances: Preferences.ScaleInProtectedInstances}'
+```
+
+A refresh that skipped a protected runner shows `Status` `Successful` and `ScaleInProtectedInstances` `Ignore`, and,
+when it had nothing else to replace, the same `StartTime` and `EndTime`. A refresh that waited an hour for a
+protected runner and gave up shows `Status` `Failed` and `ScaleInProtectedInstances` `Wait`.
+
+To replace such runners by hand:
+
+1. Wait until no job is running on the pool. Each runner has an `instance_id:<instance id>` label, and `busy` is
+   `true` while it runs a job:
+
+    ```bash
+    gh api --paginate orgs/<org>/actions/runners \
+      --jq '.runners[] | {name, status, busy, instance: ([.labels[].name | select(startswith("instance_id:"))][0])}'
+    ```
+
+2. A runner that is still protected while it runs no job holds a protection that `gha_postrun.sh` failed to lift.
+   Lift it:
+
+    ```bash
+    aws autoscaling set-instance-protection --auto-scaling-group-name <asg> \
+      --instance-ids <instance id> --no-protected-from-scale-in
+    ```
+
+3. Start the refresh with the module's preferences:
+
+    ```bash
+    aws autoscaling start-instance-refresh --auto-scaling-group-name <asg> --strategy Rolling \
+      --preferences '{"MinHealthyPercentage": 100, "MaxHealthyPercentage": 100, "InstanceWarmup": 0,
+        "SkipMatching": false, "AutoRollback": false, "ScaleInProtectedInstances": "Wait",
+        "StandbyInstances": "Ignore"}'
+    ```
+
+    These are the preferences the module's own refresh runs with from 6.0.0. With `ScaleInProtectedInstances` set to
+    `Wait`, a runner that starts a job before the refresh reaches it is replaced after the job instead of being
+    skipped. `SkipMatching` set to `false` replaces every runner, including those already on the ASG's version.
+
+4. Follow the refresh with `describe-instance-refreshes` until its `Status` is `Successful`, then check the versions
+   again.
 
 ### What you need to change
 
