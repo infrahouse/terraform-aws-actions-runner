@@ -95,7 +95,7 @@ terraform-aws-lambda-monitored. Their names start with the function name: `<asg-
 | Alarm | Condition | Action |
 |-------|-----------|--------|
 | `<function>-errors-immediate` | Any error (registration) | SNS notification |
-| `<function>-errors-threshold` | Error rate > `error_rate_threshold` (deregistration, record_metric) | SNS notification |
+| `<function>-errors-threshold` | `error_rate_threshold` exceeded (deregistration, record_metric) | SNS notification |
 | `<function>-throttles` | Any throttle | SNS notification |
 | `<function>-memory` | Memory utilization > 80% | SNS notification |
 

@@ -61,7 +61,11 @@ variable "alarm_emails" {
 }
 
 variable "error_rate_threshold" {
-  description = "Error rate threshold percentage for Lambda error alerting. Alerts trigger when error rate exceeds this percentage."
+  description = <<-EOT
+    Error rate threshold percentage for the runner_deregistration and record_metric Lambda error alarms.
+    They alert when the error rate exceeds this percentage. The runner_registration alarm fires on any error
+    and doesn't use it.
+  EOT
   type        = number
   default     = 10.0
   validation {
