@@ -162,11 +162,40 @@ Hibernated instances should show `stopped`. If they show `running`, they're not 
 
 ## Lambda Errors
 
+### Error Alarm Fired
+
+Each Lambda function has one error alarm. How they differ, and why, is in
+[Monitoring → Error alarms](monitoring.md#error-alarms).
+
+| Alarm | What it means |
+|-------|---------------|
+| `<asg-name>_registration-errors-immediate` | A registration failed. The instance may not have joined the pool. |
+| `<asg-name>_deregistration-errors-threshold` | Sweeps failed in two consecutive half-hours: about an hour of failures. Runners whose instances are gone may be piling up in GitHub. |
+| `<asg-name>_record_metric-errors-threshold` | The function failed in two consecutive minutes. The runner metrics that drive scaling aren't being published. |
+
+The registration alarm stays in ALARM for its whole window, the function's timeout plus about five minutes, after
+the failed invocation started. Another failure in that window doesn't send a second notification, so check the logs
+for more than one.
+
+**Check the alarms:**
+```bash
+aws cloudwatch describe-alarms \
+  --alarm-name-prefix "$(terraform output -raw autoscaling_group_name)_" \
+  --query 'MetricAlarms[?contains(AlarmName, `-errors-`)].[AlarmName,StateValue,StateReason]' \
+  --output table
+```
+
+Then read the function's logs, as in [Runner Not Registering](#runner-not-registering) and
+[Runner Stuck Terminating](#runner-stuck-terminating).
+
 ### Throttling
 
 **Check CloudWatch alarm:**
 ```bash
-aws cloudwatch describe-alarms --alarm-name-prefix "throttles"
+aws cloudwatch describe-alarms \
+  --alarm-name-prefix "$(terraform output -raw autoscaling_group_name)_" \
+  --query 'MetricAlarms[?ends_with(AlarmName, `-throttles`)].[AlarmName,StateValue]' \
+  --output table
 ```
 
 **Increase concurrency:**
