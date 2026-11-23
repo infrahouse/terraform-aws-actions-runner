@@ -1,5 +1,9 @@
 # Upgrading
 
+What each release that needs your attention changes, and what to do about it, newest first. The
+[Changelog](changelog.md) lists every change from 3.1.0 on; [Earlier releases](#earlier-releases) covers the notes from
+before it.
+
 ## Upgrading to 6.0.0 (instance role named from the pool)
 
 6.0.0 names the instance role from the pool, the way the Lambda roles are named, and removes the `role_name` input
@@ -330,3 +334,122 @@ terraform-aws-lambda-monitored 2.x packages manylinux_2_28 wheels, which only th
 | `runner_role_name` | `actions-runner-instance-<role_name>`; `runner_role_arn` is still the instance role's ARN |
 | `lambda_role_name_prefix` | `actions-runner-lambda-<pool>-` |
 | `lambda_role_arn_pattern` | `arn:<partition>:iam::<account>:role/actions-runner-lambda-<pool>-*` |
+
+## Upgrading to 4.0.0 (unified alarm topic)
+
+4.0.0 unifies the alarm notification channel
+([#93](https://github.com/infrahouse/terraform-aws-actions-runner/issues/93)). It renames `sns_topic_alarm_arn`
+(singular, optional) to `alarm_topic_arns` (list, optional). The module also starts creating its own SNS topic
+unconditionally and subscribing `alarm_emails` to it.
+
+### What changes
+
+- The module now **always** creates its own SNS topic for alarms and subscribes every address in `alarm_emails`.
+  Previously, EC2 CPU alarms were silently disabled when callers set only `alarm_emails` and not the (optional,
+  defaulted-null) `sns_topic_alarm_arn`, resulting in EC2 instances reported as unmonitored.
+- **Breaking:** `sns_topic_alarm_arn` (singular, optional) is replaced by `alarm_topic_arns` (list, default `[]`).
+  Callers upgrading who previously set `sns_topic_alarm_arn = "<arn>"` should rename to
+  `alarm_topic_arns = ["<arn>"]`. After the rename, the module creates its own topic **and** fans out to the provided
+  ARNs — strictly more coverage.
+- Every alarm in the module (CPU and all future alarms) now fires to the module-owned topic plus any ARNs in
+  `alarm_topic_arns`.
+- New output `alarm_topic_arn` exposes the module-owned topic for additional subscriptions.
+
+### Who needs to change anything
+
+Only callers who previously set `sns_topic_alarm_arn`. If you only set `alarm_emails`, no caller-side change is
+needed — the upgrade is purely additive (you stop being silently unmonitored).
+
+### Rename
+
+```hcl
+# Before
+module "actions-runner" {
+  # ...
+  sns_topic_alarm_arn = "arn:aws:sns:us-east-1:123456789012:shared-alarms"
+}
+
+# After
+module "actions-runner" {
+  # ...
+  alarm_topic_arns = ["arn:aws:sns:us-east-1:123456789012:shared-alarms"]
+}
+```
+
+After the rename, alarms fire to **both** the module-owned topic (driven by `alarm_emails`) and every ARN in
+`alarm_topic_arns`.
+
+## Upgrading to 3.1.0 (runner_deregistration migration)
+
+The 3.1.0 release migrates the `runner_deregistration` lambda to use `terraform-aws-lambda-monitored` (v1.0.4) for
+improved monitoring. **This is a seamless upgrade with no breaking changes and no data loss.**
+
+### What changed
+
+- Internal implementation now uses `terraform-aws-lambda-monitored` module
+- Automated dependency packaging for Lambda functions (no more custom package.sh scripts)
+- Built-in error monitoring: new SNS alerts for Lambda errors (using existing `alarm_emails` variable)
+- Standardized CloudWatch integration with configurable error rate thresholds
+- Scheduled sweep interval optimized from 5 minutes to 30 minutes, for improved efficiency
+- Existing log groups and data are preserved via `moved` blocks
+- **No configuration changes required** - all variables remain the same
+
+### Migration steps
+
+Simply update your module version and apply:
+
+```hcl
+module "actions-runner" {
+  source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
+  version = "3.1.0" # Update from 3.0.x
+
+  # All existing configuration remains unchanged
+}
+```
+
+Then run:
+
+```bash
+terraform plan  # Shows resource moves via "moved" blocks
+terraform apply # Applies seamlessly
+```
+
+**What to expect:**
+
+- Terraform shows resources moving to new paths (not destroy/create)
+- CloudWatch logs and data are fully preserved
+- Zero downtime - runners continue operating normally
+- New monitoring capabilities added automatically
+
+**Verification:** After upgrade, check CloudWatch Logs - your deregistration logs will still be there with full
+history intact.
+
+## Upgrading to 3.0.0 (record_metric migration)
+
+3.0.0 migrates the `record_metric` lambda to the `terraform-aws-lambda-monitored` module (v1.0.0):
+
+- Automated dependency packaging for Lambda functions (no more custom package.sh scripts)
+- Built-in error monitoring and alerting via SNS for Lambda functions
+- Standardized CloudWatch integration with configurable error rate thresholds
+- **Breaking:** Removed `lambda_bucket_name` variable - the module now creates its own S3 bucket for Lambda packages
+- **New Required:** `alarm_emails` variable - list of email addresses for Lambda error notifications (required for
+  Lambda error monitoring)
+- **New Optional:** `error_rate_threshold` variable - error rate percentage threshold for alerting (default: 10.0)
+
+## Earlier releases
+
+Notes on earlier releases, which the [Changelog](changelog.md) doesn't cover:
+
+- **AWS Provider 5 and 6 Support:** The module now supports both AWS provider version 5 and 6, ensuring
+  compatibility across major versions.
+- **Enhanced Input Validation:** Added validation blocks for `architecture`, `max_instance_lifetime_days`, and other
+  critical variables to catch configuration errors early.
+- **Improved Type Safety:** All variables now have explicit type declarations for better consistency and error
+  prevention.
+- **Spot Instances Support:** The module supports spot instances by enabling you to specify the minimum on-demand
+  capacity via the `on_demand_base_capacity` variable.
+- **Warm Pool Support:** The module now supports a warm pool, allowing you to pre-initialize instances.
+- **Bugfixes:**
+    - Improved instance lifecycle management.
+    - Prevent action runner jobs from being scheduled on instances going back to the warm pool.
+    - Orphaned runners are now automatically deregistered.
