@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 from os import path as osp, remove
+from pathlib import Path
 from shutil import copytree, ignore_patterns, rmtree
 from textwrap import dedent
 from typing import Dict, List
@@ -398,7 +399,7 @@ def _point_example_at_checkout(root_dir: str) -> str:
 
 
 @pytest.mark.parametrize("example", EXAMPLES)
-def test_example_validates(example, tmp_path):
+def test_example_validates(example: str, tmp_path: Path) -> None:
     """An example pins the current version and passes init and validate against this checkout."""
     root_dir = str(tmp_path / example)
     copytree(
@@ -422,7 +423,7 @@ def test_example_validates(example, tmp_path):
         assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_example_without_registry_source_is_rejected(tmp_path):
+def test_example_without_registry_source_is_rejected(tmp_path: Path) -> None:
     """An example that doesn't call the registry module fails instead of being validated."""
     (tmp_path / "main.tf").write_text(
         'module "actions_runner" {\n  source = "../.."\n}\n'
