@@ -5,12 +5,15 @@ locals {
   # so the alarm's window follows the schedule if it ever changes.
   schedule_interval_minutes = 30
   schedule_interval_unit    = local.schedule_interval_minutes == 1 ? "minute" : "minutes"
+  schedule_interval         = "${local.schedule_interval_minutes} ${local.schedule_interval_unit}" # "30 minutes"
 }
 
 resource "aws_cloudwatch_event_rule" "run_every" {
-  name_prefix         = substr("${var.asg_name}-${local.schedule_interval_minutes}-${local.schedule_interval_unit}", 0, 38)
-  description         = "Trigger Lambda ${module.lambda_monitored.lambda_function_name} every ${local.schedule_interval_minutes} ${local.schedule_interval_unit}"
-  schedule_expression = "rate(${local.schedule_interval_minutes} ${local.schedule_interval_unit})"
+  name_prefix = substr("${var.asg_name}-${replace(local.schedule_interval, " ", "-")}", 0, 38)
+  description = format(
+    "Trigger Lambda %s every %s", module.lambda_monitored.lambda_function_name, local.schedule_interval
+  )
+  schedule_expression = "rate(${local.schedule_interval})"
   tags = merge(
     var.tags,
     {
