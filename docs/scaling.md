@@ -8,10 +8,11 @@ The warm pool keeps instances in a hibernated state, ready to wake up in seconds
 
 ### How It Works
 
-1. Instances boot fully and configure themselves
-2. Instead of terminating on scale-in, they hibernate to the warm pool
-3. On scale-out, hibernated instances wake up (~10-30 seconds)
-4. Cold launches only happen when warm pool is empty
+1. The ASG launches instances into the warm pool; they boot fully, configure themselves and hibernate
+2. On scale-out, hibernated instances wake up (~10-30 seconds)
+3. Cold launches only happen when the warm pool is empty
+4. On scale-in, the runner is deregistered from GitHub and the instance is terminated. It doesn't go back to the
+   warm pool: the module sets `reuse_on_scale_in = false`, so the pool only holds instances the ASG launched into it
 
 ### Configuration
 
