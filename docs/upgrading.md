@@ -379,10 +379,11 @@ module "actions-runner" {
 After the rename, alarms fire to **both** the module-owned topic (driven by `alarm_emails`) and every ARN in
 `alarm_topic_arns`.
 
-## Upgrading to 3.1.0 (runner_deregistration migration)
+## Upgrading to 3.1.1 (runner_deregistration migration)
 
-The 3.1.0 release migrates the `runner_deregistration` lambda to use `terraform-aws-lambda-monitored` (v1.0.4) for
-improved monitoring. **This is a seamless upgrade with no breaking changes and no data loss.**
+The 3.1.1 release migrates the `runner_deregistration` lambda to use `terraform-aws-lambda-monitored` (v1.0.4) for
+improved monitoring. It is the first published release with this change: 3.1.0 wasn't published. **This is a
+seamless upgrade with no breaking changes and no data loss.**
 
 ### What changed
 
@@ -401,7 +402,7 @@ Simply update your module version and apply:
 ```hcl
 module "actions-runner" {
   source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
-  version = "3.1.0" # Update from 3.0.x
+  version = "3.1.1" # Update from 3.0.x
 
   # All existing configuration remains unchanged
 }
