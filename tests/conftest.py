@@ -9,6 +9,7 @@ from typing import Dict, Optional
 import pytest
 
 
+from botocore.client import BaseClient
 from github import GithubIntegration
 from github.Consts import MAX_JWT_EXPIRY
 from infrahouse_core.aws.asg import ASG
@@ -398,7 +399,9 @@ def assert_lambda_memory_within_limit(
     )
 
 
-def _describe_metric_alarm(cloudwatch_client, alarm_name: str) -> Optional[Dict]:
+def _describe_metric_alarm(
+    cloudwatch_client: BaseClient, alarm_name: str
+) -> Optional[Dict]:
     """
     Return the metric alarm with exactly this name.
 
@@ -412,7 +415,9 @@ def _describe_metric_alarm(cloudwatch_client, alarm_name: str) -> Optional[Dict]
     return alarms[0] if alarms else None
 
 
-def assert_error_rate_alarm(cloudwatch_client, function_name: str, period: int) -> None:
+def assert_error_rate_alarm(
+    cloudwatch_client: BaseClient, function_name: str, period: int
+) -> None:
     """
     Fail unless a Lambda's error-rate alarm evaluates 2 of 2 periods of ``period`` seconds.
 
@@ -444,11 +449,17 @@ def assert_error_rate_alarm(cloudwatch_client, function_name: str, period: int) 
         f"{alarm_name}: expected period {period} on both metric queries, "
         f"got {metric_periods}"
     )
-    assert alarm["EvaluationPeriods"] == 2, alarm_name
-    assert alarm["DatapointsToAlarm"] == 2, alarm_name
+    assert (
+        alarm["EvaluationPeriods"] == 2
+    ), f"{alarm_name}: expected 2 evaluation periods, got {alarm['EvaluationPeriods']}"
+    assert (
+        alarm["DatapointsToAlarm"] == 2
+    ), f"{alarm_name}: expected 2 datapoints to alarm, got {alarm['DatapointsToAlarm']}"
 
 
-def assert_immediate_error_alarm(cloudwatch_client, function_name: str) -> None:
+def assert_immediate_error_alarm(
+    cloudwatch_client: BaseClient, function_name: str
+) -> None:
     """
     Fail unless a Lambda alarms on any error, with no error-rate alarm.
 
