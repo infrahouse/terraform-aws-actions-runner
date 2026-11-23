@@ -1,10 +1,12 @@
+import configparser
 import json
 import os
 import platform
+import re
 import subprocess
 import sys
 from os import path as osp, remove
-from shutil import rmtree
+from shutil import copytree, ignore_patterns, rmtree
 from textwrap import dedent
 from typing import Dict, List
 
@@ -338,3 +340,92 @@ def test_valid_input_passes_validation(validation_root, arguments):
     _write_validation_root(validation_root, arguments)
     result = _terraform(["validate", "-no-color"], validation_root)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+# The examples are validated the same way, with no AWS account, against this checkout rather
+# than the published module: an example that only works with the release it pins would hide
+# a change on this branch that breaks it.
+EXAMPLES_DIR = osp.join(REPO_ROOT, "examples")
+EXAMPLES = sorted(
+    name for name in os.listdir(EXAMPLES_DIR) if osp.isdir(osp.join(EXAMPLES_DIR, name))
+)
+# An example calls the published module as a reader would copy it: the registry source, and
+# an exact version on the next line.
+REGISTRY_MODULE_RE = re.compile(
+    r"^(?P<indent>[ \t]*)source[ \t]*=[ \t]*"
+    r'"registry\.infrahouse\.com/infrahouse/actions-runner/aws"[ \t]*\n'
+    r'[ \t]*version[ \t]*=[ \t]*"(?P<version>[^"]*)"[ \t]*\n',
+    re.MULTILINE,
+)
+
+
+def _current_version() -> str:
+    """
+    Return the module's current version, the one a release bumps.
+
+    :return: ``current_version`` from ``.bumpversion.cfg``.
+    """
+    config = configparser.ConfigParser(interpolation=None)
+    config.read(osp.join(REPO_ROOT, ".bumpversion.cfg"))
+    return config["bumpversion"]["current_version"]
+
+
+def _point_example_at_checkout(root_dir: str) -> str:
+    """
+    Make the example in ``root_dir`` call this checkout instead of the registry module.
+
+    ``main.tf`` is rewritten in place: the registry source and its version become a local source.
+
+    :param root_dir: Directory with a copy of the example.
+    :return: The version the example pins.
+    :raises ValueError: If ``main.tf`` doesn't call the registry module exactly once, with its
+        version on the line after the source. Otherwise the test could validate another module.
+    """
+    main_tf = osp.join(root_dir, "main.tf")
+    with open(main_tf) as fp:
+        content = fp.read()
+    matches = list(REGISTRY_MODULE_RE.finditer(content))
+    if len(matches) != 1:
+        raise ValueError(
+            f"{main_tf} must call registry.infrahouse.com/infrahouse/actions-runner/aws once, "
+            f"with its version on the next line. Found {len(matches)} such calls."
+        )
+    match = matches[0]
+    local_source = f'{match["indent"]}source = "{osp.relpath(REPO_ROOT, root_dir)}"\n'
+    with open(main_tf, "w") as fp:
+        fp.write(content[: match.start()] + local_source + content[match.end() :])
+    return match["version"]
+
+
+@pytest.mark.parametrize("example", EXAMPLES)
+def test_example_validates(example, tmp_path):
+    """An example pins the current version and passes init and validate against this checkout."""
+    root_dir = str(tmp_path / example)
+    copytree(
+        osp.join(EXAMPLES_DIR, example),
+        root_dir,
+        ignore=ignore_patterns(
+            ".terraform", ".terraform.lock.hcl", "terraform.tfstate*"
+        ),
+    )
+    pinned_version = _point_example_at_checkout(root_dir)
+    assert pinned_version == _current_version(), (
+        f"examples/{example} pins version {pinned_version}, but the module is at "
+        f"{_current_version()}. Add examples/{example}/main.tf to .bumpversion.cfg."
+    )
+
+    for args in (
+        ["init", "-backend=false", "-input=false", "-no-color"],
+        ["validate", "-no-color"],
+    ):
+        result = _terraform(args, root_dir)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_example_without_registry_source_is_rejected(tmp_path):
+    """An example that doesn't call the registry module fails instead of being validated."""
+    (tmp_path / "main.tf").write_text(
+        'module "actions_runner" {\n  source = "../.."\n}\n'
+    )
+    with pytest.raises(ValueError, match="Found 0 such calls"):
+        _point_example_at_checkout(str(tmp_path))
