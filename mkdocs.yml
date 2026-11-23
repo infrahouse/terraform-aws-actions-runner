@@ -46,6 +46,7 @@ nav:
   - Troubleshooting: troubleshooting.md
   - Upgrading: upgrading.md
   - Comparison: comparison.md
+  - Changelog: changelog.md
 
 markdown_extensions:
   - pymdownx.highlight:
