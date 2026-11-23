@@ -2,6 +2,9 @@
 
 Common deployment patterns for the `terraform-aws-actions-runner` module.
 
+Complete root modules for the GitHub token and the GitHub App cases, which the test suite validates, are in
+[examples/](https://github.com/infrahouse/terraform-aws-actions-runner/tree/main/examples) in the repository.
+
 ## Minimal: GitHub Token Auth
 
 The smallest viable configuration — a single runner authenticated with a classic GitHub token.
