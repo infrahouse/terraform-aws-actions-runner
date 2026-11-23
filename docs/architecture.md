@@ -170,7 +170,7 @@ job starts, and `gha_postrun.sh` turns it off when the job ends. The refresh set
 2. `idle_runners_high` alarm enters ALARM state
 3. ASG scaling policy removes instances
 4. Lifecycle hook ensures graceful deregistration
-5. Instance returns to warm pool (if enabled) or terminates
+5. Instance terminates. It doesn't return to the warm pool: the module sets `reuse_on_scale_in = false`
 
 ## Security Model
 
