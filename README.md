@@ -1,201 +1,132 @@
 # terraform-aws-actions-runner
 
+Self-hosted GitHub Actions runners on an EC2 Auto Scaling Group, with a hibernated warm pool.
+
 [![Need Help?](https://img.shields.io/badge/Need%20Help%3F-Contact%20Us-0066CC)](https://infrahouse.com/contact)
 [![Docs](https://img.shields.io/badge/docs-github.io-blue)](https://infrahouse.github.io/terraform-aws-actions-runner/)
 [![Registry](https://img.shields.io/badge/Terraform-Registry-purple?logo=terraform)](https://registry.terraform.io/modules/infrahouse/actions-runner/aws/latest)
 [![Release](https://img.shields.io/github/release/infrahouse/terraform-aws-actions-runner.svg)](https://github.com/infrahouse/terraform-aws-actions-runner/releases/latest)
-[![Security](https://img.shields.io/github/actions/workflow/status/infrahouse/terraform-aws-actions-runner/vuln-scanner-pr.yml?label=Security)](https://github.com/infrahouse/terraform-aws-actions-runner/actions/workflows/vuln-scanner-pr.yml)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-
 [![AWS EC2](https://img.shields.io/badge/AWS-EC2-orange?logo=amazonec2)](https://aws.amazon.com/ec2/)
 [![AWS Auto Scaling](https://img.shields.io/badge/AWS-Auto%20Scaling-orange?logo=amazonec2)](https://aws.amazon.com/autoscaling/)
 [![AWS Lambda](https://img.shields.io/badge/AWS-Lambda-orange?logo=awslambda)](https://aws.amazon.com/lambda/)
-[![Self-Hosted Runners](https://img.shields.io/badge/GitHub-Self--Hosted%20Runners-blue?logo=githubactions)](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners)
+[![Security](https://img.shields.io/github/actions/workflow/status/infrahouse/terraform-aws-actions-runner/vuln-scanner-pr.yml?label=Security)](https://github.com/infrahouse/terraform-aws-actions-runner/actions/workflows/vuln-scanner-pr.yml)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 This Terraform module creates an Auto Scaling Group (ASG) and registers its instances
-as self-hosted runners for GitHub Actions. It supports authentication using either a
+as [self-hosted runners](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners)
+for GitHub Actions. It supports authentication using either a
 classic GitHub token or temporary tokens obtained via a GitHub App.
-
-## Why Self-Hosted Runners?
-
-Self-hosted runners offer several advantages over GitHub-hosted runners:
-
-- **Cost Efficiency:** Run workflows on your own infrastructure, potentially reducing costs for high-volume CI/CD pipelines, especially when using spot instances.
-- **Custom Hardware:** Use specific CPU architectures, GPUs, or other specialized hardware required by your workloads.
-- **Access to Private Resources:** Runners deployed in your VPC can access private databases, internal APIs, and other resources without exposing them to the internet.
-- **Larger Compute Resources:** Go beyond GitHub-hosted runner limits with custom instance types that have more CPU, memory, or storage.
-- **Compliance and Security:** Keep sensitive data and build artifacts within your own infrastructure to meet regulatory requirements.
-- **Caching and Performance:** Leverage persistent storage and network proximity to your resources for faster build times.
 
 > Note: The module registers organization-level runners only even though GitHub supports repository-specific runners.
 
-## What's New
+See [Why Self-Hosted Runners?](https://infrahouse.github.io/terraform-aws-actions-runner/#why-self-hosted-runners)
+for what running your own runners gives you over GitHub-hosted ones.
 
-- **v6.0.0 — Instance role named from the pool (#111):**
-    - **Breaking:** the instance role is now `actions-runner-instance-<pool>`, with the same `<pool>` as the Lambda
-      roles, and the `role_name` input is removed. Delete `role_name` from your module block. Upgrading replaces the
-      instance role and rolls the runners.
-- **v5.0.0 — Distinct IAM role name prefixes (#109):**
-    - **Breaking:** the instance role is now `actions-runner-instance-<role_name>` and the Lambda roles
-      `actions-runner-lambda-<pool>-<function>-…`, so a policy can select the Lambdas by name pattern without the
-      runners. Upgrading replaces the roles and rolls the runners.
-    - **Breaking:** `python_version` accepts only `python3.12` and `python3.13` (terraform-aws-lambda-monitored 2.2.0).
-    - **Breaking:** `role_name` is validated (1 to 40 characters from `[\w+=,.@-]`) and can't be `null`.
-    - New outputs `runner_role_name`, `lambda_role_name_prefix` and `lambda_role_arn_pattern`.
-- **v4.0.0 — Unified alarm notification channel (#93):**
-    - The module now **always** creates its own SNS topic for alarms and subscribes every address in `alarm_emails`. Previously, EC2 CPU alarms were silently disabled when callers set only `alarm_emails` and not the (optional, defaulted-null) `sns_topic_alarm_arn`, resulting in EC2 instances reported as unmonitored.
-    - **Breaking:** `sns_topic_alarm_arn` (singular, optional) is replaced by `alarm_topic_arns` (list, default `[]`). Callers upgrading who previously set `sns_topic_alarm_arn = "<arn>"` should rename to `alarm_topic_arns = ["<arn>"]`. After the rename, the module creates its own topic **and** fans out to the provided ARNs — strictly more coverage.
-    - Every alarm in the module (CPU and all future alarms) now fires to the module-owned topic plus any ARNs in `alarm_topic_arns`.
-    - New output `alarm_topic_arn` exposes the module-owned topic for additional subscriptions.
-- **Migrated runner_deregistration lambda to terraform-aws-lambda-monitored module (v1.0.4):**
-    - Automated dependency packaging for Lambda functions (no more custom package.sh scripts)
-    - Built-in error monitoring and alerting via SNS
-    - Standardized CloudWatch integration with configurable error rate thresholds
-    - Scheduled sweep interval changed from 5 to 30 minutes for improved efficiency
-    - **Migration is seamless** - existing log groups and data are preserved via `moved` blocks
-- **Migrated record_metric lambda to terraform-aws-lambda-monitored module (v1.0.0):**
-    - Automated dependency packaging for Lambda functions (no more custom package.sh scripts)
-    - Built-in error monitoring and alerting via SNS for Lambda functions
-    - Standardized CloudWatch integration with configurable error rate thresholds
-    - **Breaking:** Removed `lambda_bucket_name` variable - the module now creates its own S3 bucket for Lambda packages
-    - **New Required:** `alarm_emails` variable - list of email addresses for Lambda error notifications (required for Lambda error monitoring)
-    - **New Optional:** `error_rate_threshold` variable - error rate percentage threshold for alerting (default: 10.0)
-- **AWS Provider 5 and 6 Support:** The module now supports both AWS provider version 5 and 6, ensuring compatibility across major versions.
-- **Enhanced Input Validation:** Added validation blocks for `architecture`, `max_instance_lifetime_days`, and other critical variables to catch configuration errors early.
-- **Improved Type Safety:** All variables now have explicit type declarations for better consistency and error prevention.
-- **Spot Instances Support:** The module supports spot instances by enabling you to specify the minimum on-demand capacity via the `on_demand_base_capacity` variable.
-- **Warm Pool Support:** The module now supports a warm pool, allowing you to pre-initialize instances.
-- **Bugfixes:**
-    - Improved instance lifecycle management.
-    - Prevent action runner jobs from being scheduled on instances going back to the warm pool.
-    - Orphaned runners are now automatically deregistered.
+## Why This Module?
 
-## Migration Guide
+The runners are an ordinary EC2 Auto Scaling Group, and the module leaves scaling, health checks and replacement to
+AWS primitives you can inspect with the usual tools:
 
-### Upgrading to v6.0.0 (instance role named from the pool)
+- **Scaling you can read in CloudWatch.** A Lambda function publishes the pool's busy and idle runner counts every
+  minute, and two CloudWatch alarms on the idle count drive the ASG's scaling policies. Nothing listens for GitHub
+  webhooks, so there is no webhook endpoint to expose or secure.
+- **Runners that start in seconds.** The warm pool keeps instances that have already booted and run Puppet in a
+  hibernated state. Scaling out wakes one up instead of building a new instance from scratch.
+- **Jobs that finish.** A runner protects itself from scale-in for the length of every job, the termination
+  lifecycle hook waits for the running job before it deregisters the runner, and an instance refresh waits for busy
+  runners instead of replacing them mid-job.
+- **No broken runners in service.** A launch lifecycle hook holds every new instance until cloud-init and Puppet
+  finish. If any step fails, the instance is abandoned instead of joining the pool.
+- **Configured by Puppet.** Cloud-init runs Puppet's `gha_runner` role on every runner, and you add your own Hiera
+  data, packages, files and APT repositories on top.
+- **Monitoring included.** Every Lambda function comes with error, throttle and memory alarms, the ASG with health
+  and saturation alarms, and the pool with a CloudWatch dashboard. Logs are kept for 365 days by default, as ISO 27001
+  and SOC 2 audits expect.
 
-Delete `role_name` from the module block: passing it fails at plan with "Unsupported argument". The instance role is
-replaced with `actions-runner-instance-<pool>` and the runners roll. A pool on 4.x can upgrade straight to 6.0.0. See
-the [upgrade guide](https://infrahouse.github.io/terraform-aws-actions-runner/upgrading/) for what changes and what to
-do.
+It is not the right fit if you need ephemeral, Windows or repository-level runners, or scaling on GitHub webhook
+events. The [comparison](https://infrahouse.github.io/terraform-aws-actions-runner/comparison/) goes through the
+trade-offs.
 
-### Upgrading to v5.0.0 (IAM role name prefixes)
+## Features
 
-The roles are replaced and the runners roll. Policies that match the old role names must be updated, `role_name`
-can't be `null`, and `python_version` must be `python3.12` or `python3.13`. See the
-[upgrade guide](https://infrahouse.github.io/terraform-aws-actions-runner/upgrading/) for what changes and what to do.
+- **Auto Scaling Group of runners** on the latest Ubuntu AMI for `ubuntu_codename` (Ubuntu Pro `noble` by default),
+  or on your own `ami_id`. IMDSv2 is required, the root volume is encrypted, and instances are replaced after
+  `max_instance_lifetime_days` (30 by default).
+- **Hibernated warm pool**, on by default and sized with `warm_pool_min_size` and `warm_pool_max_size`.
+- **Spot instances with an on-demand base**: set `on_demand_base_capacity`, and the capacity above it is spot. The
+  warm pool is off in this mode.
+- **Autoscaling on idle runners**: the `record_metric` Lambda publishes `BusyRunners` and `IdleRunners` every minute,
+  and CloudWatch alarms add or remove `autoscaling_step` instances to keep `idle_runners_target_count` runners idle.
+- **GitHub App or classic token authentication**: `github_app_pem_secret_arn` and `github_app_id`, or
+  `github_token_secret_arn`, read from AWS Secrets Manager.
+- **Registration Lambda** on the launch lifecycle hook: it creates a runner registration token and stores it in
+  Secrets Manager for the new instance.
+- **Deregistration Lambda** on the termination lifecycle hook, plus a sweep every 30 minutes that removes orphaned
+  runners from GitHub.
+- **Bootstrap lifecycle hook**: an instance whose cloud-init or Puppet run fails is abandoned and never enters
+  service.
+- **Scale-in protection while a job runs**, and instance refreshes that wait for protected runners.
+- **Puppet configuration through cloud-init**: Hiera and module paths, plus `packages`, `extra_files`, `extra_repos`
+  and `post_runcmd`.
+- **Runner labels**: `extra_labels` on top of the labels the module adds (`aws_region:…`, `aws_account:…`,
+  `installation_id:…`).
+- **Alarms and a dashboard**: an SNS topic for `alarm_emails`, fanned out to `alarm_topic_arns`; alarms on CPU, the
+  ASG at or saturated at its maximum, no instances in service, stuck launches, an empty warm pool and instances that
+  never registered; error, throttle and memory alarms on every Lambda function (via terraform-aws-lambda-monitored);
+  and a CloudWatch dashboard for the pool.
+- **Predictable IAM role names**: `actions-runner-instance-<pool>` and `actions-runner-lambda-<pool>-…`, with
+  outputs for writing policies against them.
+- **AWS provider 5 and 6** (`>= 5.31, < 7.0`).
 
-### Upgrading to v4.0.0 (Unified Alarm Topic)
+## Quick Start
 
-The v4.0.0 release renames `sns_topic_alarm_arn` (singular, optional) to
-`alarm_topic_arns` (list, optional). The module also starts creating its own
-SNS topic unconditionally and subscribing `alarm_emails` to it.
-
-#### Who Needs To Change Anything
-
-Only callers who previously set `sns_topic_alarm_arn`. If you only set
-`alarm_emails`, no caller-side change is needed — the upgrade is purely
-additive (you stop being silently unmonitored).
-
-#### Rename
+The module needs a Secrets Manager secret that holds either a classic GitHub token with the `admin:org` scope or the
+private key of a GitHub App (see
+[Authentication](https://infrahouse.github.io/terraform-aws-actions-runner/authentication/)). With a token:
 
 ```hcl
-# Before
-module "actions-runner" {
-  # ...
-  sns_topic_alarm_arn = "arn:aws:sns:us-east-1:123456789012:shared-alarms"
-}
-
-# After
-module "actions-runner" {
-  # ...
-  alarm_topic_arns = ["arn:aws:sns:us-east-1:123456789012:shared-alarms"]
-}
-```
-
-After the rename, alarms fire to **both** the module-owned topic (driven by
-`alarm_emails`) and every ARN in `alarm_topic_arns`.
-
-### Upgrading to v3.1.0+ (runner_deregistration Migration)
-
-The v3.1.0 release migrates the `runner_deregistration` lambda to use `terraform-aws-lambda-monitored` for improved monitoring. 
-**This is a seamless upgrade with no breaking changes and no data loss.**
-
-#### What Changed
-
-- Internal implementation now uses `terraform-aws-lambda-monitored` module
-- Scheduled sweep interval optimized from 5 minutes to 30 minutes
-- New SNS alerts for Lambda errors (using existing `alarm_emails` variable)
-- **No configuration changes required** - all variables remain the same
-
-#### Migration Steps
-
-Simply update your module version and apply:
-
-```hcl
-module "actions-runner" {
-  source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
-  version = "~> 3.1"  # Update from 3.0.x
-
-  # All existing configuration remains unchanged
-}
-```
-
-Then run:
-
-```bash
-terraform plan  # Shows resource moves via "moved" blocks
-terraform apply # Applies seamlessly
-```
-
-**What to expect:**
-- Terraform shows resources moving to new paths (not destroy/create)
-- CloudWatch logs and data are fully preserved
-- Zero downtime - runners continue operating normally
-- New monitoring capabilities added automatically
-
-**Verification:** After upgrade, check CloudWatch Logs - your deregistration logs will still be there with full history intact.
-
-## Usage
-
-Below is an example Terraform configuration showing the updated usage:
-
-To make it work, the module needs a secret storing a GitHub classic token with org:admin permissions. 
-Alternatively, the module can use temporary GitHub tokens generated by a GitHub App. 
-
-Either `github_token_secret_arn` or `github_app_pem_secret_arn` is required.
-
-```hcl
-module "actions-runner" {
+module "actions_runner" {
   source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
   version = "6.0.0"
 
-  asg_min_size             = 1
-  asg_max_size             = 1
-  subnet_ids               = var.subnet_private_ids
-  environment              = local.environment
-  github_org_name          = "infrahouse"
-
-  # Option 1: Use GitHub classic token
-  github_token_secret_arn  = "arn:aws:secretsmanager:us-west-1:123456789:secret:GITHUB_TOKEN-xyz"
-
-  # Option 2: Use GitHub App (comment out Option 1 if using this)
-  # github_app_pem_secret_arn = "arn:aws:secretsmanager:us-west-1:123456789:secret:action-runner-pem-xyz"
-  # github_app_id             = 123456
-
-  keypair_name             = aws_key_pair.jumphost.key_name
-  puppet_hiera_config_path = "/opt/infrahouse-puppet-data/environments/${local.environment}/hiera.yaml"
-  packages = [
-    "infrahouse-puppet-data"
-  ]
-  extra_labels = ["awesome"]
+  environment             = "production"
+  github_org_name         = "your-org"
+  subnet_ids              = ["subnet-0123456789abcdef0", "subnet-0fedcba9876543210"]
+  alarm_emails            = ["oncall@example.com"]
+  github_token_secret_arn = "arn:aws:secretsmanager:us-west-2:123456789012:secret:GITHUB_TOKEN-AbCdEf"
 }
 ```
 
-> It's not a bad idea to check `test_data/actions-runner/main.tf` and other files in the directory. 
-> They're a part of Terraform unit test and are supposed to work.
+Either `github_token_secret_arn` or `github_app_pem_secret_arn` is required. To authenticate as a GitHub App, set
+`github_app_pem_secret_arn` and `github_app_id` instead of `github_token_secret_arn`.
 
----
+Puppet configures the runners, and its `profile::github_runner` reads the organization from Hiera
+(`profile::github_runner::url` and `profile::github_runner::org`). Provide them in your Hiera data, for instance in a
+package listed in `packages`, and point `puppet_hiera_config_path` at its `hiera.yaml`, as the
+[examples](examples/) do. They are complete root modules for both kinds of authentication.
+
+## Documentation
+
+The full documentation is on [GitHub Pages](https://infrahouse.github.io/terraform-aws-actions-runner/):
+
+- [Getting Started](https://infrahouse.github.io/terraform-aws-actions-runner/getting-started/): prerequisites and
+  the first deployment
+- [Architecture](https://infrahouse.github.io/terraform-aws-actions-runner/architecture/): how the module works
+- [Configuration](https://infrahouse.github.io/terraform-aws-actions-runner/configuration/): every input
+- [Authentication](https://infrahouse.github.io/terraform-aws-actions-runner/authentication/): GitHub App or token
+  setup
+- [Scaling](https://infrahouse.github.io/terraform-aws-actions-runner/scaling/): warm pool, autoscaling and spot
+  instances
+- [Monitoring](https://infrahouse.github.io/terraform-aws-actions-runner/monitoring/): alarms, the dashboard and
+  Lambda alerting
+- [Examples](https://infrahouse.github.io/terraform-aws-actions-runner/examples/): common deployment patterns
+- [Troubleshooting](https://infrahouse.github.io/terraform-aws-actions-runner/troubleshooting/): common issues and
+  their fixes
+- [Upgrading](https://infrahouse.github.io/terraform-aws-actions-runner/upgrading/): what to change when you upgrade,
+  and notes on earlier releases
+- [Comparison](https://infrahouse.github.io/terraform-aws-actions-runner/comparison/): how this module compares with
+  alternatives
+- [Changelog](https://infrahouse.github.io/terraform-aws-actions-runner/changelog/): every change, release by release
 
 <!-- BEGIN_TF_DOCS -->
 
@@ -337,3 +268,22 @@ module "actions-runner" {
 | <a name="output_runner_role_arn"></a> [runner\_role\_arn](#output\_runner\_role\_arn) | ARN of the runner instance role, the role the runner EC2 instances use. |
 | <a name="output_runner_role_name"></a> [runner\_role\_name](#output\_runner\_role\_name) | Name of the runner instance role: actions-runner-instance-<pool>, with the same <pool> as<br/>lambda\_role\_name\_prefix. It never matches actions-runner-lambda-*, the prefix of the module's Lambda roles. |
 <!-- END_TF_DOCS -->
+
+## Examples
+
+- [examples/github-token](examples/github-token): runners that authenticate with a classic GitHub token
+- [examples/github-app](examples/github-app): runners that authenticate as a GitHub App
+
+Each is a complete root module, and the test suite runs `terraform init` and `terraform validate` on both against this
+checkout. They are based on [test_data/actions-runner](test_data/actions-runner), the root module the integration
+test deploys. The [Examples](https://infrahouse.github.io/terraform-aws-actions-runner/examples/) page has more
+patterns: spot instances, warm pool sizing, several pools in one account and alarm fan-out.
+
+## Contributing
+
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). To report a vulnerability, see
+[SECURITY.md](SECURITY.md).
+
+## License
+
+This module is licensed under the Apache License 2.0: see [LICENSE](LICENSE).
