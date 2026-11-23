@@ -4,6 +4,31 @@ What each release that needs your attention changes, and what to do about it, ne
 [Changelog](changelog.md) lists every change from 3.1.0 on; [Earlier releases](#earlier-releases) covers the notes from
 before it.
 
+## Upgrading past 6.0.0 (Lambda error alarms)
+
+The registration and deregistration Lambdas' error alarms could never fire: they needed two breaching one-minute
+datapoints in a row, and neither function runs every minute
+([#91](https://github.com/infrahouse/terraform-aws-actions-runner/issues/91)). The next release fixes both. See
+[Monitoring → Error alarms](monitoring.md#error-alarms) for how each alarm works now.
+
+### What happens on `terraform apply`
+
+| Alarm | Change |
+|-------|--------|
+| `<asg-name>_deregistration-errors-threshold` | Updated in place: 30-minute periods, 2 of 2 |
+| `<asg-name>_registration-errors-threshold` | Destroyed |
+| `<asg-name>_registration-errors-immediate` | Created: fires on any failed registration |
+
+Nothing else changes.
+
+### What you need to change
+
+Nothing in the module call. `error_rate_threshold` stays, and the deregistration and record_metric alarms use it as
+before; the registration alarm no longer does.
+
+If anything refers to the registration alarm by name, such as a dashboard, a composite alarm or a runbook, point it at
+`<asg-name>_registration-errors-immediate`.
+
 ## Upgrading to 6.0.0 (instance role named from the pool)
 
 6.0.0 names the instance role from the pool, the way the Lambda roles are named, and removes the `role_name` input
