@@ -37,7 +37,7 @@ Before using this module, ensure you have:
 ## Key Features
 
 - **Automated Dependency Management**: Uses `lambda-monitored` module for automatic Python dependency packaging
-- **Built-in Monitoring**: Error rate monitoring with SNS alerting
+- **Built-in Monitoring**: An error alarm that fires on any failed registration, with SNS alerting
 - **Long Timeout Support**: Default 15-minute timeout to handle slow registrations
 - **Retry Prevention**: Automatic retries disabled to prevent consuming lifecycle hook timeout
 - **Secure Credential Handling**: GitHub credentials retrieved from Secrets Manager at runtime
@@ -59,9 +59,14 @@ If instances fail to register:
 - Review CloudWatch Logs for detailed error messages
 - Ensure the lifecycle hook timeout (default: 20 minutes) is longer than `lambda_timeout`
 
-### High Error Rate Alerts
+### Error Alerts
 
-If you receive SNS alerts about high error rates:
+The `<asg-name>_registration-errors-immediate` alarm fires on any failed registration. The function runs only on
+launch lifecycle events, which can be hours or days apart, so an error-rate alarm would have too few datapoints to
+fire ([#91](https://github.com/infrahouse/terraform-aws-actions-runner/issues/91)). lambda-monitored sizes the
+alarm's window from the function's timeout, so an error late in a long invocation still alarms.
+
+If you receive an error alert:
 - Check CloudWatch Logs for specific error patterns
 - Verify GitHub API rate limits haven't been exceeded
 - Review recent GitHub organization changes (renamed, archived, etc.)
@@ -118,7 +123,6 @@ If you receive SNS alerts about high error rates:
 | <a name="input_architecture"></a> [architecture](#input\_architecture) | The CPU architecture for the Lambda function; valid values are `x86_64` or `arm64`. | `string` | `"x86_64"` | no |
 | <a name="input_asg_name"></a> [asg\_name](#input\_asg\_name) | Autoscaling group name to assign this lambda to. | `string` | n/a | yes |
 | <a name="input_cloudwatch_log_group_retention"></a> [cloudwatch\_log\_group\_retention](#input\_cloudwatch\_log\_group\_retention) | Number of days you want to retain log events in the log group. | `number` | `365` | no |
-| <a name="input_error_rate_threshold"></a> [error\_rate\_threshold](#input\_error\_rate\_threshold) | Error rate threshold percentage for threshold-based alerting. | `number` | `10` | no |
 | <a name="input_github_app_id"></a> [github\_app\_id](#input\_github\_app\_id) | GitHub App that gives out GitHub tokens for Terraform. For instance, https://github.com/organizations/infrahouse/settings/apps/infrahouse-github-terraform | `string` | n/a | yes |
 | <a name="input_github_credentials"></a> [github\_credentials](#input\_github\_credentials) | A secret and its type to auth in Github. | <pre>object(<br/>    {<br/>      type : string   # Can be either "token" or "pem"<br/>      secret : string # ARN where either is stored<br/>    }<br/>  )</pre> | n/a | yes |
 | <a name="input_github_org_name"></a> [github\_org\_name](#input\_github\_org\_name) | GitHub organization name. | `string` | n/a | yes |

@@ -9,6 +9,7 @@ from typing import Dict, Optional
 import pytest
 
 
+from botocore.client import BaseClient
 from github import GithubIntegration
 from github.Consts import MAX_JWT_EXPIRY
 from infrahouse_core.aws.asg import ASG
@@ -41,6 +42,11 @@ LAMBDA_ROLE_NAME_RE = re.compile(
 # The prod alarm fires at 80%; the test margin is tighter so regressions are
 # caught in CI before they would page.
 LAMBDA_MEMORY_UTILIZATION_MAX_PERCENT = 70
+
+# Error-rate alarm periods (issue #91). An error-rate alarm can fire only if every period
+# contains an invocation, so the period follows how often the function runs.
+DEREGISTRATION_ERROR_RATE_PERIOD = 1800  # one period per 30-minute sweep
+RECORD_METRIC_ERROR_RATE_PERIOD = 60  # record_metric runs every minute
 
 
 setup_logging(LOG, debug=True, debug_botocore=False)
@@ -391,6 +397,87 @@ def assert_lambda_memory_within_limit(
         f"memory, which exceeds the test limit of {max_percent}%. "
         f"Either reduce memory pressure in the handler or raise memory_size."
     )
+
+
+def _describe_metric_alarm(
+    cloudwatch_client: BaseClient, alarm_name: str
+) -> Optional[Dict]:
+    """
+    Return the metric alarm with exactly this name.
+
+    :param cloudwatch_client: Boto3 CloudWatch client.
+    :param alarm_name: Full alarm name.
+    :return: The alarm as describe_alarms reports it, or None if there is no such alarm.
+    """
+    alarms = cloudwatch_client.describe_alarms(
+        AlarmNames=[alarm_name], AlarmTypes=["MetricAlarm"]
+    )["MetricAlarms"]
+    return alarms[0] if alarms else None
+
+
+def assert_error_rate_alarm(
+    cloudwatch_client: BaseClient, function_name: str, period: int
+) -> None:
+    """
+    Fail unless a Lambda's error-rate alarm evaluates 2 of 2 periods of ``period`` seconds.
+
+    The alarm is ``<function>-errors-threshold`` from terraform-aws-lambda-monitored. It divides
+    the Errors metric by the Invocations metric, so both metric queries must use the period.
+
+    :param cloudwatch_client: Boto3 CloudWatch client.
+    :param function_name: Lambda function name.
+    :param period: Expected period of both metric queries, in seconds.
+    :raises AssertionError: If the alarm is missing or has another period, number of
+        evaluation periods or datapoints to alarm.
+    """
+    alarm_name = f"{function_name}-errors-threshold"
+    alarm = _describe_metric_alarm(cloudwatch_client, alarm_name)
+    assert alarm is not None, f"Alarm {alarm_name} doesn't exist."
+    metric_periods = {
+        query["Id"]: query["MetricStat"]["Period"]
+        for query in alarm["Metrics"]
+        if "MetricStat" in query
+    }
+    LOG.info(
+        "%s: metric periods %s, %s of %s datapoints to alarm",
+        alarm_name,
+        metric_periods,
+        alarm["DatapointsToAlarm"],
+        alarm["EvaluationPeriods"],
+    )
+    assert metric_periods == {"errors": period, "invocations": period}, (
+        f"{alarm_name}: expected period {period} on both metric queries, "
+        f"got {metric_periods}"
+    )
+    assert (
+        alarm["EvaluationPeriods"] == 2
+    ), f"{alarm_name}: expected 2 evaluation periods, got {alarm['EvaluationPeriods']}"
+    assert (
+        alarm["DatapointsToAlarm"] == 2
+    ), f"{alarm_name}: expected 2 datapoints to alarm, got {alarm['DatapointsToAlarm']}"
+
+
+def assert_immediate_error_alarm(
+    cloudwatch_client: BaseClient, function_name: str
+) -> None:
+    """
+    Fail unless a Lambda alarms on any error, with no error-rate alarm.
+
+    terraform-aws-lambda-monitored names the alarm ``<function>-errors-immediate`` for
+    ``alert_strategy = "immediate"`` and ``<function>-errors-threshold`` for "threshold".
+
+    :param cloudwatch_client: Boto3 CloudWatch client.
+    :param function_name: Lambda function name.
+    :raises AssertionError: If the immediate alarm is missing or the threshold alarm exists.
+    """
+    immediate_alarm_name = f"{function_name}-errors-immediate"
+    threshold_alarm_name = f"{function_name}-errors-threshold"
+    assert (
+        _describe_metric_alarm(cloudwatch_client, immediate_alarm_name) is not None
+    ), f"Alarm {immediate_alarm_name} doesn't exist."
+    assert (
+        _describe_metric_alarm(cloudwatch_client, threshold_alarm_name) is None
+    ), f"Alarm {threshold_alarm_name} still exists."
 
 
 def invoke_deregistration_sweep(

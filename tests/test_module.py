@@ -20,6 +20,8 @@ from tests.conftest import (
     LOG,
     TERRAFORM_ROOT_DIR,
     GITHUB_ORG_NAME,
+    assert_error_rate_alarm,
+    assert_immediate_error_alarm,
     assert_lambda_memory_within_limit,
     assert_no_inspector_exclusion_tag,
     assert_role_name_prefixes,
@@ -27,7 +29,9 @@ from tests.conftest import (
     ensure_runners,
     get_tmp_token,
     invoke_deregistration_sweep,
+    DEREGISTRATION_ERROR_RATE_PERIOD,
     GH_APP_ID,
+    RECORD_METRIC_ERROR_RATE_PERIOD,
 )
 
 
@@ -143,6 +147,29 @@ def test_module(
             )
             assert_role_outputs(boto3_session, tf_output, asg_name, lambda_role_arns)
 
+            # Issue #91: each Lambda's error alarm must be able to fire at the rate the
+            # function runs. Registration runs on launch events, deregistration every 30
+            # minutes and record_metric every minute.
+            cloudwatch_client = boto3_session.client(
+                "cloudwatch", region_name=aws_region
+            )
+            registration_lambda_name = tf_output["registration_lambda_name"]["value"]
+            deregistration_lambda_name = tf_output["deregistration_lambda_name"][
+                "value"
+            ]
+            record_metric_lambda_name = tf_output["record_metric_lambda_name"]["value"]
+            assert_immediate_error_alarm(cloudwatch_client, registration_lambda_name)
+            assert_error_rate_alarm(
+                cloudwatch_client,
+                deregistration_lambda_name,
+                DEREGISTRATION_ERROR_RATE_PERIOD,
+            )
+            assert_error_rate_alarm(
+                cloudwatch_client,
+                record_metric_lambda_name,
+                RECORD_METRIC_ERROR_RATE_PERIOD,
+            )
+
             autoscaling_client = boto3_session.client(
                 "autoscaling", region_name=aws_region
             )
@@ -172,18 +199,12 @@ def test_module(
             # that normally runs on a 30-minute schedule, so the test has to
             # invoke it explicitly to get coverage on the real failure mode.
             lambda_client = boto3_session.client("lambda", region_name=aws_region)
-            cloudwatch_client = boto3_session.client(
-                "cloudwatch", region_name=aws_region
-            )
-            deregistration_lambda_name = tf_output["deregistration_lambda_name"][
-                "value"
-            ]
             invoke_deregistration_sweep(lambda_client, deregistration_lambda_name)
 
             for lambda_name in (
-                tf_output["registration_lambda_name"]["value"],
+                registration_lambda_name,
                 deregistration_lambda_name,
-                tf_output["record_metric_lambda_name"]["value"],
+                record_metric_lambda_name,
             ):
                 assert_lambda_memory_within_limit(cloudwatch_client, lambda_name)
         finally:

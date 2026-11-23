@@ -12,7 +12,6 @@ module "registration" {
   lambda_timeout                   = var.allowed_drain_time
   role_name_prefix                 = local.registration_role_name_prefix
   alarm_emails                     = var.alarm_emails
-  error_rate_threshold             = var.error_rate_threshold
   tags                             = local.default_module_tags
   python_version                   = var.python_version
   architecture                     = var.architecture

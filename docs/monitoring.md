@@ -32,11 +32,14 @@ module "actions-runner" {
   # ... other config ...
 
   alarm_emails = ["oncall@example.com"]
-  
-  # Alert when error rate exceeds 10% (default)
+
+  # Error rate (%) above which the deregistration and record_metric error alarms fire (default 10).
+  # The registration error alarm fires on any error and ignores it.
   error_rate_threshold = 10.0
 }
 ```
+
+How each function's error alarm works is described under [Lambda Alarms](#lambda-alarms).
 
 ## CloudWatch Metrics
 
@@ -85,13 +88,49 @@ Created automatically, all routed to the module-owned SNS topic (and to any ARNs
 
 ### Lambda Alarms
 
-Each Lambda has:
+Each Lambda function has an error alarm, a throttle alarm and a memory alarm, created by
+terraform-aws-lambda-monitored. Their names start with the function name: `<asg-name>_registration`,
+`<asg-name>_deregistration` or `<asg-name>_record_metric`.
 
 | Alarm | Condition | Action |
 |-------|-----------|--------|
-| `*_errors` | Any error (immediate) or error rate > threshold | SNS notification |
-| `*_throttles` | Any throttle | SNS notification |
-| `*_memory` | Memory utilization > 80% | SNS notification |
+| `<function>-errors-immediate` | Any error (registration) | SNS notification |
+| `<function>-errors-threshold` | `error_rate_threshold` exceeded (deregistration, record_metric) | SNS notification |
+| `<function>-throttles` | Any throttle | SNS notification |
+| `<function>-memory` | Memory utilization > 80% | SNS notification |
+
+#### Error alarms
+
+An error-rate alarm only works if every one of its periods contains an invocation. CloudWatch has no datapoint for a
+period in which the function didn't run, and the alarms treat missing data as not breaching. With periods shorter
+than the gap between invocations, the alarm never collects enough breaching datapoints and stays OK while every run
+fails ([#91](https://github.com/infrahouse/terraform-aws-actions-runner/issues/91)). So each function's error alarm
+follows how often the function runs:
+
+| Function | Runs | Error alarm | Fires after |
+|----------|------|-------------|-------------|
+| registration | On ASG launch lifecycle events | `-errors-immediate`: any error | The first failed registration |
+| deregistration | Every 30 minutes, and on ASG terminate lifecycle events | `-errors-threshold`: 30-minute periods, 2 of 2 | Two consecutive half-hours with an error rate above `error_rate_threshold`: about an hour of failing sweeps |
+| record_metric | Every minute | `-errors-threshold`: 1-minute periods, 2 of 2 | Two consecutive minutes with an error rate above `error_rate_threshold` |
+
+- **registration is event-driven.** Launches can be hours or days apart, so no error-rate period spans the gap
+  between invocations, and a failed registration means an instance that doesn't join the pool. The alarm fires on
+  any error. Lambda stamps an error with the minute the invocation started but publishes it when the invocation
+  ends, so lambda-monitored sizes this alarm's window from the function's timeout: an error late in a 15-minute
+  invocation still alarms.
+- **deregistration runs on a sparse schedule.** A sweep every 30 minutes removes runners whose instances are gone.
+  The alarm uses one 30-minute period per sweep, derived from the schedule, so every period has an invocation. One
+  failed sweep doesn't alarm, because the next sweep retries the cleanup; two in a row do. The period is also longer
+  than the function's timeout (`allowed_drain_time`, at most 900 seconds), so a slow run's datapoint lands inside the
+  window. With one sweep per period, a period's error rate is 0% or 100% unless terminations add invocations to it,
+  so `error_rate_threshold` changes little for this alarm.
+- **record_metric runs every minute.** Every 1-minute period has an invocation, so the default window works, and
+  two failing minutes in a row alarm. A short window suits it: the scaling alarms run on the metrics it publishes.
+
+!!! note "Registration alarm renamed"
+    Releases after 6.0.0 replace `<asg-name>_registration-errors-threshold` with
+    `<asg-name>_registration-errors-immediate`. Update anything that refers to the old alarm by name. See
+    [Upgrading](upgrading.md#upgrading-past-600-lambda-error-alarms).
 
 The memory alarm is backed by the `LambdaInsights/memory_utilization` metric.
 Lambda Insights is enabled on every function in this module so the alarm can

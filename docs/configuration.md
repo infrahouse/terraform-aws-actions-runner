@@ -119,7 +119,7 @@ extra_repos = {
 | `python_version` | string | `"python3.12"` | Lambda Python runtime: `python3.12` or `python3.13` |
 | `lambda_subnet_ids` | list(string) | `null` | Lambda VPC subnets. Default: `subnet_ids` |
 | `cloudwatch_log_group_retention` | number | `365` | Log retention in days |
-| `error_rate_threshold` | number | `10` | Error rate % for alerting |
+| `error_rate_threshold` | number | `10` | Error rate % for the deregistration and record_metric error alarms |
 
 ## IAM Configuration
 
@@ -144,7 +144,7 @@ See [Architecture → IAM role naming](architecture.md#iam-role-naming).
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `alarm_emails` | list(string) | required | Email addresses for alerts |
-| `error_rate_threshold` | number | `10` | Error rate % threshold |
+| `error_rate_threshold` | number | `10` | Error rate % above which the deregistration and record_metric error alarms fire. The registration error alarm fires on any error. See [Monitoring → Error alarms](monitoring.md#error-alarms). |
 | `alarm_topic_arns` | list(string) | `[]` | Additional SNS topic ARNs to fan alarms out to (PagerDuty, Slack, shared org topics). The module always creates its own topic for `alarm_emails`; this list is additive. |
 
 ## Tags
