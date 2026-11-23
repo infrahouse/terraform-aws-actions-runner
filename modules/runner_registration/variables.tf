@@ -44,16 +44,6 @@ variable "alarm_emails" {
   }
 }
 
-variable "error_rate_threshold" {
-  description = "Error rate threshold percentage for threshold-based alerting."
-  type        = number
-  default     = 10.0
-  validation {
-    condition     = var.error_rate_threshold > 0 && var.error_rate_threshold <= 100
-    error_message = "error_rate_threshold must be between 0 and 100"
-  }
-}
-
 variable "lambda_timeout" {
   description = "Time in seconds to let lambda run."
   type        = number

@@ -108,10 +108,14 @@ module "lambda_monitored" {
   memory_utilization_threshold_percent = 80
   cloudwatch_log_retention_days        = var.cloudwatch_log_group_retention
   alarm_emails                         = var.alarm_emails
-  alert_strategy                       = "threshold"
-  error_rate_threshold                 = var.error_rate_threshold
   additional_iam_policy_arns           = [aws_iam_policy.runner_registration_permissions.arn]
   role_name_prefix                     = var.role_name_prefix
+
+  # Error alarm: any failed registration alarms (issue #91). The function runs only on launch
+  # lifecycle events, which can be hours or days apart, so no error-rate period spans the gap
+  # between invocations. lambda-monitored sizes the immediate alarm's window from the timeout,
+  # so an error late in a long invocation still alarms.
+  alert_strategy = "immediate"
 
   # VPC Configuration
   lambda_subnet_ids         = var.subnet_ids
