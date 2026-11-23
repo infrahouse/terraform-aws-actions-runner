@@ -1,14 +1,16 @@
 # Scheduled EventBridge Rule (every 30 minutes)
 
 locals {
-  factor = 30
-  period = local.factor == 1 ? "minute" : "minutes"
+  # How often the sweep runs. The error-rate alarm in main.tf takes its period from this value,
+  # so the alarm's window follows the schedule if it ever changes.
+  schedule_interval_minutes = 30
+  schedule_interval_unit    = local.schedule_interval_minutes == 1 ? "minute" : "minutes"
 }
 
 resource "aws_cloudwatch_event_rule" "run_every" {
-  name_prefix         = substr("${var.asg_name}-${local.factor}-${local.period}", 0, 38)
-  description         = "Trigger Lambda ${module.lambda_monitored.lambda_function_name} every ${local.factor} ${local.period}"
-  schedule_expression = "rate(${local.factor} ${local.period})"
+  name_prefix         = substr("${var.asg_name}-${local.schedule_interval_minutes}-${local.schedule_interval_unit}", 0, 38)
+  description         = "Trigger Lambda ${module.lambda_monitored.lambda_function_name} every ${local.schedule_interval_minutes} ${local.schedule_interval_unit}"
+  schedule_expression = "rate(${local.schedule_interval_minutes} ${local.schedule_interval_unit})"
   tags = merge(
     var.tags,
     {

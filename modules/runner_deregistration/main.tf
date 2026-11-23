@@ -1,6 +1,13 @@
-# Local values needed for IAM policy
 locals {
+  # Needed for the IAM policy
   asg_arn = "arn:aws:autoscaling:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:autoScalingGroup:*:autoScalingGroupName/${var.asg_name}"
+
+  # One error-rate period per scheduled sweep (issue #91). A period shorter than the gap between
+  # sweeps holds at most one datapoint in the alarm's window, so the alarm could never collect two
+  # breaching datapoints. The period must also be at least the Lambda's timeout, because a run's
+  # datapoint arrives when the run ends (lambda-monitored issue #33). The timeout is at most 900 s,
+  # which lambda-monitored validates, so keep the schedule at 15 minutes or more.
+  error_rate_period = local.schedule_interval_minutes * 60
 }
 
 # Custom IAM policy for runner_deregistration lambda
@@ -101,10 +108,16 @@ module "lambda_monitored" {
   memory_utilization_threshold_percent = 80
   cloudwatch_log_retention_days        = var.cloudwatch_log_group_retention
   alarm_emails                         = var.alarm_emails
-  alert_strategy                       = "threshold"
-  error_rate_threshold                 = var.error_rate_threshold
   additional_iam_policy_arns           = [aws_iam_policy.runner_deregistration_permissions.arn]
   role_name_prefix                     = var.role_name_prefix
+
+  # Error alarm: fires when two consecutive periods breach error_rate_threshold, which takes about
+  # an hour of failing sweeps. One failed sweep doesn't alarm.
+  alert_strategy                 = "threshold"
+  error_rate_threshold           = var.error_rate_threshold
+  error_rate_period              = local.error_rate_period
+  error_rate_evaluation_periods  = 2
+  error_rate_datapoints_to_alarm = 2
 
   # VPC Configuration
   lambda_subnet_ids         = var.subnet_ids

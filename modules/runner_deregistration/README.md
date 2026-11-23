@@ -107,13 +107,19 @@ The Lambda requires extensive AWS permissions:
 
 ## Monitoring & Alerting
 
-Uses **threshold-based alerting** (default: 10% error rate):
-- Prevents alert fatigue from transient failures (GitHub API rate limits, network issues)
-- Alerts only when error rate exceeds 10% → indicates systemic problems
+Uses **threshold-based alerting** over 30-minute periods (default threshold: 10% error rate):
 - Lambda runs ~48 times/day (scheduled) + on every instance termination
-- Occasional failures are expected and tolerable (best-effort cleanup)
+- One alarm period per scheduled sweep, so every period has an invocation. With shorter periods the alarm
+  never collects two datapoints and can't fire
+  ([#91](https://github.com/infrahouse/terraform-aws-actions-runner/issues/91))
+- Alarms when two consecutive periods breach the threshold: about an hour of failing sweeps
+- One failed sweep doesn't alarm: occasional failures are expected and tolerable (best-effort cleanup), and the
+  next sweep retries
 
-**Alternative:** `alert_strategy = "immediate"` would send an email for every single error, 
+The period is derived from the schedule in `eventbridge.tf`, so they can't drift apart. It must stay at least the
+Lambda's timeout (at most 900 seconds), because a run's error datapoint is published when the run ends.
+
+**Alternative:** `alert_strategy = "immediate"` would send an email for every single failed sweep,
 but would likely cause alert fatigue.
 
 ## Usage
@@ -203,7 +209,7 @@ When processing scheduled events:
 - Individual runner failures don't stop the sweep
 - Lifecycle hook failures result in `ABANDON` (ASG continues termination)
 - All errors are logged to CloudWatch
-- Threshold alerting prevents notification spam
+- Threshold alerting prevents notification spam: one failed sweep doesn't alarm, two in a row do
 
 ## Migration Notes
 
@@ -238,9 +244,10 @@ This is **expected behavior**! The two-phase architecture means:
 - This is by design to keep lifecycle hooks fast and reliable
 - If runners aren't removed after 30 minutes, check the scheduled sweep Lambda logs
 
-### Too many alarm emails
-- Increase `error_rate_threshold` (e.g., 15% or 20%)
-- Consider switching to `alert_strategy = "immediate"` only if zero-tolerance for failures is required
+### The error alarm fired
+- The sweep has failed in two consecutive half-hours. Check CloudWatch Logs for the failing runs
+- Raising `error_rate_threshold` won't quiet it: with one sweep per 30-minute period, a period's error rate is
+  0% or 100% unless instance terminations add invocations to it
 
 ## See Also
 
