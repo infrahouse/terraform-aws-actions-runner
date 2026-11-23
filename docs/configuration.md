@@ -170,7 +170,7 @@ See [Architecture → IAM role naming](architecture.md#iam-role-naming).
 ```hcl
 module "actions-runner" {
   source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
-  version = "~> 3.2"
+  version = "6.0.0"
 
   # Required
   environment             = "production"

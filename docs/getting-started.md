@@ -49,7 +49,7 @@ resource "aws_secretsmanager_secret_version" "github_token" {
 ```hcl
 module "actions-runner" {
   source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
-  version = "~> 3.2"
+  version = "6.0.0"
 
   # Required
   environment              = "production"
