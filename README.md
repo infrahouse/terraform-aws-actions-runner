@@ -146,6 +146,7 @@ The full documentation is on [GitHub Pages](https://infrahouse.github.io/terrafo
 |------|---------|
 | <a name="provider_aws"></a> [aws](#provider\_aws) | >= 5.31, < 7.0 |
 | <a name="provider_random"></a> [random](#provider\_random) | >= 3.5 |
+| <a name="provider_terraform"></a> [terraform](#provider\_terraform) | n/a |
 | <a name="provider_tls"></a> [tls](#provider\_tls) | >= 4.0 |
 
 ## Modules
@@ -189,6 +190,7 @@ The full documentation is on [GitHub Pages](https://infrahouse.github.io/terrafo
 | [random_string.profile-suffix](https://registry.terraform.io/providers/hashicorp/random/latest/docs/resources/string) | resource |
 | [random_string.reg_token_suffix](https://registry.terraform.io/providers/hashicorp/random/latest/docs/resources/string) | resource |
 | [random_uuid.installation-id](https://registry.terraform.io/providers/hashicorp/random/latest/docs/resources/uuid) | resource |
+| [terraform_data.github_credentials](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
 | [tls_private_key.actions-runner](https://registry.terraform.io/providers/hashicorp/tls/latest/docs/resources/private_key) | resource |
 | [aws_ami.selected](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/ami) | data source |
 | [aws_ami.ubuntu](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/ami) | data source |
@@ -223,10 +225,11 @@ The full documentation is on [GitHub Pages](https://infrahouse.github.io/terrafo
 | <a name="input_extra_labels"></a> [extra\_labels](#input\_extra\_labels) | A list of strings to be added as actions runner labels. | `list(string)` | `[]` | no |
 | <a name="input_extra_policies"></a> [extra\_policies](#input\_extra\_policies) | A map of additional policy ARNs to attach to the instance role. | `map(string)` | `{}` | no |
 | <a name="input_extra_repos"></a> [extra\_repos](#input\_extra\_repos) | Additional APT repositories to configure on an instance. | <pre>map(<br/>    object(<br/>      {<br/>        source   = string<br/>        key      = string<br/>        machine  = optional(string)<br/>        authFrom = optional(string)<br/>        priority = optional(number)<br/>      }<br/>    )<br/>  )</pre> | `{}` | no |
-| <a name="input_github_app_id"></a> [github\_app\_id](#input\_github\_app\_id) | GitHub App that gives out GitHub tokens for Terraform. Required if github\_app\_pem\_secret\_arn is not null. For instance, https://github.com/organizations/infrahouse/settings/apps/infrahouse-github-terraform | `number` | `null` | no |
-| <a name="input_github_app_pem_secret_arn"></a> [github\_app\_pem\_secret\_arn](#input\_github\_app\_pem\_secret\_arn) | ARN of a secret that stores GitHub App PEM key. Either github\_token\_secret\_arn or github\_app\_pem\_secret\_arn is required. | `string` | `null` | no |
+| <a name="input_github_app_id"></a> [github\_app\_id](#input\_github\_app\_id) | ID of the GitHub App the Lambdas authenticate as, from the App's settings page. Required with<br/>github\_app\_kms\_key\_arn, and with github\_app\_pem\_secret\_arn unless github\_token\_secret\_arn is set.<br/>For instance, https://github.com/organizations/infrahouse/settings/apps/infrahouse-github-terraform | `number` | `null` | no |
+| <a name="input_github_app_kms_key_arn"></a> [github\_app\_kms\_key\_arn](#input\_github\_app\_kms\_key\_arn) | ARN of a KMS key that holds the GitHub App's private key: an RSA\_2048 SIGN\_VERIFY key with key material<br/>imported from the App key (see "GitHub App key in KMS" in the README). The key can't be exported: the Lambdas<br/>sign the App JWT with kms:Sign and get installation tokens with only the permissions each one needs.<br/>This is the recommended way to authenticate as a GitHub App. Requires github\_app\_id, and can't be combined with<br/>github\_token\_secret\_arn or github\_app\_pem\_secret\_arn. A key ARN only, not an alias ARN or a key ID. | `string` | `null` | no |
+| <a name="input_github_app_pem_secret_arn"></a> [github\_app\_pem\_secret\_arn](#input\_github\_app\_pem\_secret\_arn) | ARN of a Secrets Manager secret that stores the GitHub App's private key (PEM). The Lambdas read the key and<br/>sign the App JWT with it, so whoever can read the secret can copy the key. Prefer github\_app\_kms\_key\_arn.<br/>Requires github\_app\_id. For backward compatibility, it may be set together with github\_token\_secret\_arn;<br/>the token is then used and the PEM is ignored. Can't be combined with github\_app\_kms\_key\_arn. | `string` | `null` | no |
 | <a name="input_github_org_name"></a> [github\_org\_name](#input\_github\_org\_name) | GitHub organization name. | `string` | n/a | yes |
-| <a name="input_github_token_secret_arn"></a> [github\_token\_secret\_arn](#input\_github\_token\_secret\_arn) | ARN of a secret that stores GitHub token. Either github\_token\_secret\_arn or github\_app\_pem\_secret\_arn is required. | `string` | `null` | no |
+| <a name="input_github_token_secret_arn"></a> [github\_token\_secret\_arn](#input\_github\_token\_secret\_arn) | ARN of a Secrets Manager secret that stores a classic GitHub token with the admin:org scope.<br/>The Lambdas read it and call GitHub with it.<br/>Set exactly one GitHub credential: github\_token\_secret\_arn, github\_app\_kms\_key\_arn (recommended) or<br/>github\_app\_pem\_secret\_arn. For backward compatibility, the token may be set together with<br/>github\_app\_pem\_secret\_arn; the token is then used and the PEM is ignored. | `string` | `null` | no |
 | <a name="input_gzip_userdata"></a> [gzip\_userdata](#input\_gzip\_userdata) | Whether to compress user data. Enable if user data exceeds the EC2 16 KB limit (base64-encoded). | `bool` | `false` | no |
 | <a name="input_idle_runners_target_count"></a> [idle\_runners\_target\_count](#input\_idle\_runners\_target\_count) | How many idle runners to aim for in the autoscaling policy. | `number` | `1` | no |
 | <a name="input_instance_type"></a> [instance\_type](#input\_instance\_type) | EC2 Instance type | `string` | `"t3a.micro"` | no |

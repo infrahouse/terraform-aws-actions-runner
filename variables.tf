@@ -146,19 +146,63 @@ variable "gzip_userdata" {
 }
 
 variable "github_token_secret_arn" {
-  description = "ARN of a secret that stores GitHub token. Either github_token_secret_arn or github_app_pem_secret_arn is required."
+  description = <<-EOT
+    ARN of a Secrets Manager secret that stores a classic GitHub token with the admin:org scope.
+    The Lambdas read it and call GitHub with it.
+    Set exactly one GitHub credential: github_token_secret_arn, github_app_kms_key_arn (recommended) or
+    github_app_pem_secret_arn. For backward compatibility, the token may be set together with
+    github_app_pem_secret_arn; the token is then used and the PEM is ignored.
+  EOT
   type        = string
   default     = null
 }
 
 variable "github_app_id" {
-  description = "GitHub App that gives out GitHub tokens for Terraform. Required if github_app_pem_secret_arn is not null. For instance, https://github.com/organizations/infrahouse/settings/apps/infrahouse-github-terraform"
+  description = <<-EOT
+    ID of the GitHub App the Lambdas authenticate as, from the App's settings page. Required with
+    github_app_kms_key_arn, and with github_app_pem_secret_arn unless github_token_secret_arn is set.
+    For instance, https://github.com/organizations/infrahouse/settings/apps/infrahouse-github-terraform
+  EOT
   type        = number
   default     = null
 }
 
+variable "github_app_kms_key_arn" {
+  description = <<-EOT
+    ARN of a KMS key that holds the GitHub App's private key: an RSA_2048 SIGN_VERIFY key with key material
+    imported from the App key (see "GitHub App key in KMS" in the README). The key can't be exported: the Lambdas
+    sign the App JWT with kms:Sign and get installation tokens with only the permissions each one needs.
+    This is the recommended way to authenticate as a GitHub App. Requires github_app_id, and can't be combined with
+    github_token_secret_arn or github_app_pem_secret_arn. A key ARN only, not an alias ARN or a key ID.
+  EOT
+  type        = string
+  default     = null
+
+  validation {
+    # A key ID is a UUID, or mrk- and 32 hex digits for a multi-Region key.
+    condition = var.github_app_kms_key_arn == null ? true : can(regex(
+      join("", [
+        "^arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/",
+        "(mrk-[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$",
+      ]),
+      var.github_app_kms_key_arn
+    ))
+    error_message = <<-EOT
+      github_app_kms_key_arn must be a KMS key ARN, arn:<partition>:kms:<region>:<account>:key/<key ID>.
+      An alias ARN or a bare key ID doesn't work: the Lambdas' kms:Sign permission is granted on the key ARN.
+      Get it with: aws kms describe-key --key-id <alias or ID> --query KeyMetadata.Arn
+      Got: ${jsonencode(var.github_app_kms_key_arn)}
+    EOT
+  }
+}
+
 variable "github_app_pem_secret_arn" {
-  description = "ARN of a secret that stores GitHub App PEM key. Either github_token_secret_arn or github_app_pem_secret_arn is required."
+  description = <<-EOT
+    ARN of a Secrets Manager secret that stores the GitHub App's private key (PEM). The Lambdas read the key and
+    sign the App JWT with it, so whoever can read the secret can copy the key. Prefer github_app_kms_key_arn.
+    Requires github_app_id. For backward compatibility, it may be set together with github_token_secret_arn;
+    the token is then used and the PEM is ignored. Can't be combined with github_app_kms_key_arn.
+  EOT
   type        = string
   default     = null
 }
