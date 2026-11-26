@@ -1,20 +1,28 @@
 import json
 import logging
+import os
 import re
+import subprocess
 from datetime import datetime, timedelta, timezone
 from fnmatch import fnmatchcase
-from time import sleep
-from typing import Dict, Optional
+from os import path as osp
+from statistics import median
+from tempfile import TemporaryDirectory
+from textwrap import dedent
+from time import sleep, time
+from typing import Dict, Iterator, List, Optional
 
+import jwt
 import pytest
 
 
 from botocore.client import BaseClient
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from github import GithubIntegration
 from github.Consts import MAX_JWT_EXPIRY
 from infrahouse_core.aws.asg import ASG
 from infrahouse_core.aws.asg_instance import ASGInstance
-from infrahouse_core.github import GitHubActions
+from infrahouse_core.github import GitHubActions, KMSSigner
 from infrahouse_core.logging import setup_logging
 from infrahouse_core.timeout import timeout
 from pytest_infrahouse.plugin import aws_region
@@ -26,6 +34,16 @@ GITHUB_ORG_NAME = "infrahouse"
 TERRAFORM_ROOT_DIR = "test_data"
 GH_APP_ID = 1016363
 INSPECTOR_EXCLUSION_TAG = "InspectorEc2Exclusion"
+
+# SEC-46: the kms case imports the test App's key into a new KMS key with the commands the
+# README documents. The fixture runs the shell block that follows each marker in README.md.
+README_PATH = osp.join(osp.dirname(__file__), "..", "README.md")
+README_IMPORT_KEY_MARKER = "<!-- kms-import-key-material -->"
+README_CHECK_KEY_MARKER = "<!-- kms-check-key -->"
+KMS_SIGNING_ALGORITHM = "RSASSA_PKCS1_V1_5_SHA_256"
+# The minimum: a key left over from a run that couldn't clean up goes away in a week.
+KMS_KEY_PENDING_WINDOW_DAYS = 7
+KMS_KEY_FIXTURE_TAG = "infrahouse/terraform-aws-actions-runner/github_app_kms_key_arn"
 
 # Role name prefixes from issue #109. A policy that selects principals by role name
 # (e.g. ArnLike on aws:PrincipalArn) relies on these, so the tests check them against
@@ -62,7 +80,15 @@ def pytest_addoption(parser):
     parser.addoption(
         "--github-app-pem-secret",
         action="store",
-        help=f"Secret ARN with a GitHub App PEM key.",
+        help=f"Name or ARN of the Secrets Manager secret with the test GitHub App's PEM key.",
+    )
+    parser.addoption(
+        "--github-app-pem-secret-region",
+        action="store",
+        help=(
+            "Region of the --github-app-pem-secret secret, if it is given by name. "
+            "By default, the --aws-region of the test."
+        ),
     )
 
 
@@ -72,8 +98,214 @@ def github_token(request):
 
 
 @pytest.fixture(scope="session")
-def github_app_pem_secret_arn(request):
-    return request.config.getoption("--github-app-pem-secret")
+def github_app_pem_secret_arn(request, boto3_session, aws_region) -> Optional[str]:
+    """
+    Return the ARN of the secret with the test GitHub App's PEM key, or ``None`` if it isn't given.
+
+    ``--github-app-pem-secret`` may name the secret, so that no account ID needs to be written in
+    the Makefile. The secret may be in another region than the test, given by
+    ``--github-app-pem-secret-region``.
+    """
+    secret = request.config.getoption("--github-app-pem-secret")
+    if secret is None or secret.startswith("arn:"):
+        return secret
+    region = request.config.getoption("--github-app-pem-secret-region") or aws_region
+    return boto3_session.client("secretsmanager", region_name=region).describe_secret(
+        SecretId=secret
+    )["ARN"]
+
+
+def readme_shell_block(marker: str) -> str:
+    """
+    Return the shell commands of the README's code block that follows ``marker``.
+
+    :param marker: An HTML comment on its own line in README.md, before a fenced ``bash`` block.
+    :return: The block's commands, dedented.
+    :raises ValueError: If the marker isn't in the README once, or no bash block follows it.
+    """
+    with open(README_PATH) as fp:
+        readme = fp.read()
+    if readme.count(marker) != 1:
+        raise ValueError(
+            f"README.md must have {marker} once, found {readme.count(marker)}."
+        )
+    match = re.compile(
+        r"\n(?P<indent>[ \t]*)```bash\n(?P<body>.*?)\n(?P=indent)```\n", re.DOTALL
+    ).match(readme, readme.index(marker) + len(marker))
+    if match is None:
+        raise ValueError(f"README.md has no bash block right after {marker}.")
+    return dedent(match["body"])
+
+
+def _run_readme_block(marker: str, environment: Dict[str, str]) -> str:
+    """
+    Run the README's shell block after ``marker`` with bash, as an operator would.
+
+    :param marker: The README marker of the block.
+    :param environment: The whole environment of the commands.
+    :return: The commands' standard output.
+    :raises AssertionError: If the commands fail.
+    """
+    LOG.info("Running the README's block after %s", marker)
+    # --norc and no stdin: bash reads ~/.bashrc when it thinks a remote shell daemon started it,
+    # and the commands must not depend on the runner's shell setup.
+    result = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-c", readme_shell_block(marker)],
+        stdin=subprocess.DEVNULL,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    # The commands print no key material: the key stays in files, and the JWT goes to curl in one.
+    LOG.info("stdout: %s\nstderr: %s", result.stdout, result.stderr)
+    assert (
+        result.returncode == 0
+    ), f"The README's block after {marker} failed with exit code {result.returncode}: {result.stderr}"
+    return result.stdout
+
+
+def _readme_environment(
+    boto3_session, work_dir: str, variables: Dict[str, str]
+) -> Dict[str, str]:
+    """
+    Build the environment for the README's commands: the test role's credentials and nothing else from AWS.
+
+    :param boto3_session: Session with the test role's credentials.
+    :param work_dir: Private directory for the commands' temporary files.
+    :param variables: The variables the README tells the operator to set.
+    :return: The environment.
+    :raises AssertionError: If ``openssl`` in ``PATH`` isn't OpenSSL 3 or later.
+    """
+    credentials = boto3_session.get_credentials().get_frozen_credentials()
+    environment = {
+        "PATH": os.environ["PATH"],
+        "HOME": os.environ.get("HOME", work_dir),
+        "LANG": "C",
+        # mktemp creates the commands' own directory in here, so it is deleted even if they fail.
+        "TMPDIR": work_dir,
+        "AWS_CONFIG_FILE": os.devnull,
+        "AWS_SHARED_CREDENTIALS_FILE": os.devnull,
+        "AWS_PAGER": "",
+        "AWS_ACCESS_KEY_ID": credentials.access_key,
+        "AWS_SECRET_ACCESS_KEY": credentials.secret_key,
+        **variables,
+    }
+    if credentials.token:
+        environment["AWS_SESSION_TOKEN"] = credentials.token
+
+    openssl_version = subprocess.run(
+        ["openssl", "version"],
+        stdin=subprocess.DEVNULL,
+        env=environment,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert re.match(r"OpenSSL ([3-9]|[1-9][0-9])\.", openssl_version), (
+        f"The README's key import needs OpenSSL 3 or later for AES key wrap, but openssl is "
+        f"{openssl_version!r}. Put OpenSSL 3 first in PATH, e.g. $(brew --prefix openssl@3)/bin."
+    )
+    return environment
+
+
+def _assert_kms_signs_as_pem(boto3_session, key_arn: str, pem: str) -> None:
+    """
+    Fail unless a JWT signed through KMS verifies against the PEM key's public key.
+
+    :param boto3_session: Session with the test role's credentials, in the key's region.
+    :param key_arn: The KMS key the PEM was imported into.
+    :param pem: The App's private key.
+    :raises AssertionError: If the KMS key isn't the PEM key.
+    """
+    now = int(time())
+    payload = {"iat": now - 60, "exp": now + 540, "iss": str(GH_APP_ID)}
+    signed = KMSSigner(key_arn, session=boto3_session).sign(payload)
+    public_key = load_pem_private_key(pem.encode(), password=None).public_key()
+    try:
+        claims = jwt.decode(
+            signed, public_key, algorithms=["RS256"], issuer=str(GH_APP_ID)
+        )
+    except jwt.InvalidTokenError as err:
+        raise AssertionError(
+            f"A JWT that {key_arn} signed doesn't verify with the PEM key's public key: {err}"
+        ) from err
+    assert claims == payload
+
+
+@pytest.fixture()
+def github_app_kms_key_arn(
+    boto3_session, aws_region, keep_after, github_app_pem_secret_arn
+) -> Iterator[str]:
+    """
+    Import the test GitHub App's key into a new KMS key, and return the key's ARN.
+
+    SEC-46 decided on a fresh key per run. The key is created as the README's step 2 creates it,
+    with tags to find a leftover, and the PEM is imported with the README's own commands (steps 3
+    and 4). The fixture then checks that a JWT signed through KMS verifies against the PEM's
+    public key. At teardown the key is scheduled for deletion, unless ``--keep-after``.
+
+    The PEM, and every file the import makes, stays in memory or in a private temporary directory
+    that is deleted, also when the import fails. Nothing is logged from them.
+    """
+    assert github_app_pem_secret_arn, (
+        "The kms case needs the test App's PEM key: pass the secret with --github-app-pem-secret "
+        "(and --github-app-pem-secret-region if it is in another region)."
+    )
+    pem_region = github_app_pem_secret_arn.split(":")[3]
+    pem = boto3_session.client(
+        "secretsmanager", region_name=pem_region
+    ).get_secret_value(SecretId=github_app_pem_secret_arn)["SecretString"]
+
+    kms_client = boto3_session.client("kms", region_name=aws_region)
+    key_arn = kms_client.create_key(
+        Description=f"Test key of GitHub App {GH_APP_ID}, for terraform-aws-actions-runner tests",
+        KeyUsage="SIGN_VERIFY",
+        KeySpec="RSA_2048",
+        Origin="EXTERNAL",
+        Tags=[
+            {
+                "TagKey": "created_by",
+                "TagValue": "infrahouse/terraform-aws-actions-runner",
+            },
+            {"TagKey": "created_by_fixture", "TagValue": KMS_KEY_FIXTURE_TAG},
+        ],
+    )["KeyMetadata"]["Arn"]
+    LOG.info("Created KMS key %s for the test GitHub App's key", key_arn)
+    try:
+        with TemporaryDirectory(prefix="github-app-key-") as work_dir:
+            pem_file = osp.join(work_dir, "github-app.pem")
+            with os.fdopen(
+                os.open(pem_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w"
+            ) as fp:
+                fp.write(pem)
+            environment = _readme_environment(
+                boto3_session,
+                work_dir,
+                {
+                    "KEY_ARN": key_arn,
+                    "PEM_FILE": pem_file,
+                    "GITHUB_APP_ID": str(GH_APP_ID),
+                },
+            )
+            _run_readme_block(README_IMPORT_KEY_MARKER, environment)
+            slug = _run_readme_block(README_CHECK_KEY_MARKER, environment)
+            LOG.info("GitHub accepts a JWT %s signed: %s", key_arn, slug.strip())
+
+        _assert_kms_signs_as_pem(boto3_session, key_arn, pem)
+        del pem
+        yield key_arn
+    finally:
+        if keep_after:
+            LOG.info("--keep-after: KMS key %s is kept.", key_arn)
+        else:
+            kms_client.schedule_key_deletion(
+                KeyId=key_arn, PendingWindowInDays=KMS_KEY_PENDING_WINDOW_DAYS
+            )
+            LOG.info(
+                "Scheduled KMS key %s for deletion in %d days.",
+                key_arn,
+                KMS_KEY_PENDING_WINDOW_DAYS,
+            )
 
 
 def ensure_runners(
@@ -478,6 +710,243 @@ def assert_immediate_error_alarm(
     assert (
         _describe_metric_alarm(cloudwatch_client, threshold_alarm_name) is None
     ), f"Alarm {threshold_alarm_name} still exists."
+
+
+def assert_lambdas_use_kms_key(
+    lambda_client: BaseClient, function_names: List[str], key_arn: str
+) -> None:
+    """
+    Fail unless each Lambda is configured to sign with the KMS key and is given no secret ARN.
+
+    :param lambda_client: Boto3 Lambda client.
+    :param function_names: The pool's Lambda function names.
+    :param key_arn: The KMS key with the GitHub App's key.
+    :raises AssertionError: If a Lambda's environment names another credential type, another key,
+        or any Secrets Manager ARN.
+    """
+    for function_name in function_names:
+        variables = lambda_client.get_function_configuration(
+            FunctionName=function_name
+        )["Environment"]["Variables"]
+        LOG.info(
+            "%s: GITHUB_SECRET_TYPE=%s, GITHUB_APP_KMS_KEY_ARN=%s",
+            function_name,
+            variables.get("GITHUB_SECRET_TYPE"),
+            variables.get("GITHUB_APP_KMS_KEY_ARN"),
+        )
+        assert variables.get("GITHUB_SECRET_TYPE") == "kms", (function_name, variables)
+        assert variables.get("GITHUB_APP_KMS_KEY_ARN") == key_arn, (
+            function_name,
+            variables,
+        )
+        assert "GITHUB_SECRET" not in variables, (function_name, variables)
+        secret_arns = [v for v in variables.values() if ":secretsmanager:" in v]
+        assert (
+            not secret_arns
+        ), f"{function_name} is given secret ARNs {secret_arns} in kms mode."
+
+
+def _simulate(
+    iam_client: BaseClient,
+    role_arn: str,
+    action: str,
+    resource_arn: str,
+    signing_algorithm: Optional[str] = None,
+) -> str:
+    """
+    Return IAM's decision for one action of a role, by its identity policies.
+
+    :param iam_client: Boto3 IAM client.
+    :param role_arn: The role whose policies to evaluate.
+    :param action: The action, e.g. ``kms:Sign``.
+    :param resource_arn: The resource of the action.
+    :param signing_algorithm: The ``kms:SigningAlgorithm`` of the request, if any.
+    :return: ``allowed``, ``implicitDeny`` or ``explicitDeny``.
+    """
+    context = (
+        [
+            {
+                "ContextKeyName": "kms:SigningAlgorithm",
+                "ContextKeyValues": [signing_algorithm],
+                "ContextKeyType": "string",
+            }
+        ]
+        if signing_algorithm
+        else []
+    )
+    return iam_client.simulate_principal_policy(
+        PolicySourceArn=role_arn,
+        ActionNames=[action],
+        ResourceArns=[resource_arn],
+        ContextEntries=context,
+    )["EvaluationResults"][0]["EvalDecision"]
+
+
+def assert_lambda_roles_sign_only(
+    boto3_session,
+    lambda_role_arns: Dict[str, str],
+    key_arn: str,
+    pem_secret_arn: str,
+) -> None:
+    """
+    Fail unless each Lambda role may sign with the key, with RS256's algorithm only, and can't read the PEM.
+
+    ``iam:SimulatePrincipalPolicy`` evaluates the roles' identity policies, the ones the module
+    writes. The KMS key's own policy is the default one, which delegates to IAM.
+
+    :param boto3_session: Boto3 session for the test account.
+    :param lambda_role_arns: Lambda execution role ARN by function token.
+    :param key_arn: The KMS key with the GitHub App's key.
+    :param pem_secret_arn: The secret with the App's PEM key, which a kms pool must not read.
+    :raises AssertionError: If a role may do less or more than that.
+    """
+    iam_client = boto3_session.client("iam")
+    # Another key in the same account and region: the grant must be on exactly the pool's key.
+    other_key_arn = re.sub(
+        r"key/.*$", "key/00000000-0000-0000-0000-000000000000", key_arn
+    )
+    expected = [
+        ("kms:Sign", key_arn, KMS_SIGNING_ALGORITHM, "allowed"),
+        ("kms:Sign", key_arn, "RSASSA_PSS_SHA_256", "implicitDeny"),
+        ("kms:Sign", key_arn, None, "implicitDeny"),
+        ("kms:Sign", other_key_arn, KMS_SIGNING_ALGORITHM, "implicitDeny"),
+        ("secretsmanager:GetSecretValue", pem_secret_arn, None, "implicitDeny"),
+    ]
+    for token, role_arn in lambda_role_arns.items():
+        for action, resource_arn, algorithm, decision in expected:
+            actual = _simulate(iam_client, role_arn, action, resource_arn, algorithm)
+            LOG.info(
+                "%s: %s on %s with %s: %s",
+                role_arn,
+                action,
+                resource_arn,
+                algorithm,
+                actual,
+            )
+            assert actual == decision, (
+                f"{token} role {role_arn}: {action} on {resource_arn} with signing algorithm "
+                f"{algorithm} is {actual}, expected {decision}."
+            )
+
+
+def assert_record_metric_publishes(
+    cloudwatch_client: BaseClient,
+    asg_name: str,
+    function_name: str,
+    minutes: int = 10,
+) -> None:
+    """
+    Fail unless record_metric published both runner metrics and ran without errors lately.
+
+    The window is the last few minutes, long after the apply: a Lambda can fail in its first
+    minute, before IAM has propagated its new role's policies.
+
+    :param cloudwatch_client: Boto3 CloudWatch client.
+    :param asg_name: The pool's ASG, the dimension of the runner metrics.
+    :param function_name: The record_metric Lambda.
+    :param minutes: How many minutes back to look.
+    :raises AssertionError: If a metric has no datapoint, the Lambda didn't run, or it failed.
+    """
+    end_time = datetime.now(timezone.utc)
+    start_time = end_time - timedelta(minutes=minutes)
+
+    def _sum(namespace: str, metric_name: str, dimensions: List[Dict]) -> List[float]:
+        return [
+            datapoint["Sum"]
+            for datapoint in cloudwatch_client.get_metric_statistics(
+                Namespace=namespace,
+                MetricName=metric_name,
+                Dimensions=dimensions,
+                StartTime=start_time,
+                EndTime=end_time,
+                Period=60,
+                Statistics=["Sum"],
+            )["Datapoints"]
+        ]
+
+    for metric_name in ("BusyRunners", "IdleRunners"):
+        datapoints = _sum(
+            "GitHubRunners", metric_name, [{"Name": "asg_name", "Value": asg_name}]
+        )
+        LOG.info(
+            "%s: %d datapoints in %d minutes", metric_name, len(datapoints), minutes
+        )
+        assert (
+            datapoints
+        ), f"record_metric published no {metric_name} for {asg_name} in {minutes} minutes."
+
+    function = [{"Name": "FunctionName", "Value": function_name}]
+    invocations = sum(_sum("AWS/Lambda", "Invocations", function))
+    errors = sum(_sum("AWS/Lambda", "Errors", function))
+    LOG.info(
+        "%s: %d invocations, %d errors in %d minutes",
+        function_name,
+        invocations,
+        errors,
+        minutes,
+    )
+    assert invocations > 0, f"{function_name} didn't run in {minutes} minutes."
+    assert errors == 0, f"{function_name} failed {errors} times in {minutes} minutes."
+
+
+def log_record_metric_token_times(
+    boto3_session, aws_region: str, function_name: str, minutes: int = 30
+) -> List[float]:
+    """
+    Log how long record_metric took to get its GitHub token, and how long it ran.
+
+    record_metric logs ``Got a <type> GitHub token in <seconds> s.`` from inside its five-second
+    ``timeout()``. The numbers go into the SEC-46 pull request.
+
+    :param boto3_session: Boto3 session for the test account.
+    :param aws_region: The Lambda's region.
+    :param function_name: The record_metric Lambda.
+    :param minutes: How many minutes back to look.
+    :return: The token times, in seconds.
+    """
+    start_time = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+    logs_client = boto3_session.client("logs", region_name=aws_region)
+    times = []
+    for page in logs_client.get_paginator("filter_log_events").paginate(
+        logGroupName=f"/aws/lambda/{function_name}",
+        startTime=int(start_time.timestamp() * 1000),
+        filterPattern='"GitHub token in"',
+    ):
+        for event in page["events"]:
+            match = re.search(r"GitHub token in ([0-9.]+) s", event["message"])
+            if match:
+                times.append(float(match.group(1)))
+    if times:
+        LOG.info(
+            "%s got a GitHub token %d times in %d minutes: min %.3f s, median %.3f s, max %.3f s",
+            function_name,
+            len(times),
+            minutes,
+            min(times),
+            median(times),
+            max(times),
+        )
+
+    cloudwatch_client = boto3_session.client("cloudwatch", region_name=aws_region)
+    durations = cloudwatch_client.get_metric_statistics(
+        Namespace="AWS/Lambda",
+        MetricName="Duration",
+        Dimensions=[{"Name": "FunctionName", "Value": function_name}],
+        StartTime=start_time,
+        EndTime=datetime.now(timezone.utc),
+        Period=minutes * 60,
+        Statistics=["Average", "Maximum"],
+        Unit="Milliseconds",
+    )["Datapoints"]
+    for datapoint in durations:
+        LOG.info(
+            "%s duration in %d minutes: average %.0f ms, maximum %.0f ms",
+            function_name,
+            minutes,
+            datapoint["Average"],
+            datapoint["Maximum"],
+        )
+    return times
 
 
 def invoke_deregistration_sweep(

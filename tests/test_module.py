@@ -9,7 +9,7 @@ from os import path as osp, remove
 from pathlib import Path
 from shutil import copytree, ignore_patterns, rmtree
 from textwrap import dedent
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 import boto3
 import pytest
@@ -23,12 +23,16 @@ from tests.conftest import (
     assert_error_rate_alarm,
     assert_immediate_error_alarm,
     assert_lambda_memory_within_limit,
+    assert_lambda_roles_sign_only,
+    assert_lambdas_use_kms_key,
     assert_no_inspector_exclusion_tag,
+    assert_record_metric_publishes,
     assert_role_name_prefixes,
     assert_role_outputs,
     ensure_runners,
     get_tmp_token,
     invoke_deregistration_sweep,
+    log_record_metric_token_times,
     DEREGISTRATION_ERROR_RATE_PERIOD,
     GH_APP_ID,
     RECORD_METRIC_ERROR_RATE_PERIOD,
@@ -40,9 +44,12 @@ from tests.conftest import (
     "secret_type, ubuntu_codename",
     [
         ("token", "noble"),
+        # SEC-46: the GitHub App's key in a KMS key, imported fresh on every run.
+        ("kms", "noble"),
     ],
 )
 def test_module(
+    request,
     service_network,
     test_role_arn,
     keep_after,
@@ -57,12 +64,18 @@ def test_module(
     subnet_public_ids = service_network["subnet_public_ids"]["value"]
     subnet_private_ids = service_network["subnet_private_ids"]["value"]
 
-    if secret_type == "token":
-        assert github_token, "Set GitHub token value with --github-token CLI argument."
-    elif secret_type == "pem":
+    # Every case checks the runners on GitHub with the token, whatever the pool authenticates with.
+    assert github_token, "Set GitHub token value with --github-token CLI argument."
+    if secret_type == "pem":
         assert (
             github_app_pem_secret_arn
         ), "Set a secret ARN containing GitHub APP PEM key token value with --github-app-pem-secret CLI argument."
+    # Only the kms case creates a key, so the fixture is requested here rather than as an argument.
+    kms_key_arn = (
+        request.getfixturevalue("github_app_kms_key_arn")
+        if secret_type == "kms"
+        else None
+    )
 
     terraform_module_dir = osp.join(TERRAFORM_ROOT_DIR, "actions-runner")
 
@@ -113,14 +126,19 @@ def test_module(
                     role_arn        = "{test_role_arn}"
                     """))
 
-        fp.write(
-            f'github_token = "{github_token}"'
-            if secret_type == "token"
-            else dedent(f"""
+        if secret_type == "token":
+            fp.write(f'github_token = "{github_token}"')
+        elif secret_type == "kms":
+            # No token or PEM for the module: its Lambdas sign with the key only.
+            fp.write(dedent(f"""
+                github_app_kms_key_arn = "{kms_key_arn}"
+                github_app_id = {GH_APP_ID}
+                """))
+        else:
+            fp.write(dedent(f"""
                 github_app_pem_secret_arn = "{github_app_pem_secret_arn}"
                 github_app_id = {GH_APP_ID}
-                """)
-        )
+                """))
 
     with terraform_apply(
         terraform_module_dir,
@@ -201,6 +219,34 @@ def test_module(
             lambda_client = boto3_session.client("lambda", region_name=aws_region)
             invoke_deregistration_sweep(lambda_client, deregistration_lambda_name)
 
+            # record_metric runs every minute: by now it has published the runner counts that
+            # drive autoscaling, with the token it gets under a five-second timeout.
+            assert_record_metric_publishes(
+                cloudwatch_client, asg_name, record_metric_lambda_name
+            )
+            log_record_metric_token_times(
+                boto3_session, aws_region, record_metric_lambda_name
+            )
+
+            if secret_type == "kms":
+                # SEC-46: a kms pool's Lambdas sign with the key, with RS256's algorithm only,
+                # and can read neither a token nor the PEM.
+                assert_lambdas_use_kms_key(
+                    lambda_client,
+                    [
+                        registration_lambda_name,
+                        deregistration_lambda_name,
+                        record_metric_lambda_name,
+                    ],
+                    kms_key_arn,
+                )
+                assert_lambda_roles_sign_only(
+                    boto3_session,
+                    lambda_role_arns,
+                    kms_key_arn,
+                    github_app_pem_secret_arn,
+                )
+
             for lambda_name in (
                 registration_lambda_name,
                 deregistration_lambda_name,
@@ -241,6 +287,34 @@ DEFAULT_PYTHON_VERSION = "python3.12"
 # prove the root module rejects it.
 PYTHON_VERSION_ERROR = "python_version must be python3.12 or python3.13. Got"
 
+# SEC-46: text only this module's credential checks produce. The rules that compare inputs are
+# preconditions, which Terraform evaluates at plan; KMS_KEY_ARN_ERROR is a variable validation.
+CREDENTIALS_NONE_ERROR = "No GitHub credential is set."
+CREDENTIALS_KMS_COMBINED_ERROR = "github_app_kms_key_arn can't be combined with"
+CREDENTIALS_APP_ID_ERROR = "github_app_id is required"
+KMS_KEY_ARN_ERROR = "github_app_kms_key_arn must be a KMS key ARN"
+MODULE_INPUT_ERRORS = [
+    PYTHON_VERSION_ERROR,
+    CREDENTIALS_NONE_ERROR,
+    CREDENTIALS_KMS_COMBINED_ERROR,
+    CREDENTIALS_APP_ID_ERROR,
+    KMS_KEY_ARN_ERROR,
+]
+
+# Credential inputs for the validation root. The ARNs are well formed but name nothing: the
+# validation tests never reach an account.
+TOKEN_SECRET_ARN = (
+    "arn:aws:secretsmanager:us-west-2:123456789012:secret:GITHUB_TOKEN-AbCdEf"
+)
+PEM_SECRET_ARN = (
+    "arn:aws:secretsmanager:us-west-2:123456789012:secret:github-app-pem-AbCdEf"
+)
+KMS_KEY_ARN = (
+    "arn:aws:kms:us-west-2:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"
+)
+# The validation root's credential unless a test passes its own.
+DEFAULT_CREDENTIALS = {"github_token_secret_arn": "placeholder"}
+
 
 def _terraform(args: List[str], cwd: str) -> subprocess.CompletedProcess:
     """
@@ -270,7 +344,11 @@ def _terraform(args: List[str], cwd: str) -> subprocess.CompletedProcess:
     )
 
 
-def _write_validation_root(root_dir: str, arguments: Dict[str, str]) -> None:
+def _write_validation_root(
+    root_dir: str,
+    arguments: Dict[str, Any],
+    credentials: Optional[Dict[str, Any]] = None,
+) -> None:
     """
     Write a root module that calls this module with the given arguments as literals.
 
@@ -280,20 +358,45 @@ def _write_validation_root(root_dir: str, arguments: Dict[str, str]) -> None:
     :param root_dir: Directory to write ``main.tf`` into.
     :param arguments: Module arguments to pass besides the required ones, by name.
         Each value is written as a JSON literal.
+    :param credentials: The GitHub credential inputs, by name, written the same way.
+        ``None`` passes ``DEFAULT_CREDENTIALS``, a token secret; ``{}`` passes none.
     """
+    if credentials is None:
+        credentials = DEFAULT_CREDENTIALS
     lines = [
         'module "actions-runner" {',
         f'  source                  = "{osp.relpath(REPO_ROOT, root_dir)}"',
         '  environment             = "development"',
         f'  github_org_name         = "{GITHUB_ORG_NAME}"',
-        '  github_token_secret_arn = "placeholder"',
         '  subnet_ids              = ["subnet-placeholder"]',
         '  alarm_emails            = ["placeholder@example.com"]',
     ]
-    lines += [f"  {name} = {json.dumps(value)}" for name, value in arguments.items()]
+    lines += [
+        f"  {name} = {json.dumps(value)}"
+        for name, value in {**credentials, **arguments}.items()
+    ]
     lines.append("}")
     with open(osp.join(root_dir, "main.tf"), "w") as fp:
         fp.write("\n".join(lines) + "\n")
+
+
+def _plan_validation_root(root_dir: str) -> str:
+    """
+    Run ``terraform plan`` on the validation root, which has no AWS account to reach.
+
+    The plan always fails: without credentials, the AWS provider can't be configured. Terraform
+    still evaluates the module's variable validations and the preconditions that don't depend on
+    the AWS provider, so their errors are in the output.
+
+    :param root_dir: Directory with the initialized validation root.
+    :return: The plan's stdout and stderr, with whitespace collapsed, because Terraform wraps
+        diagnostic messages.
+    """
+    result = _terraform(["plan", "-input=false", "-no-color"], root_dir)
+    output = result.stdout + result.stderr
+    LOG.info("terraform plan output:\n%s", output)
+    assert result.returncode != 0, output
+    return " ".join(output.split())
 
 
 @pytest.fixture(scope="module")
@@ -311,12 +414,13 @@ def validation_root(tmp_path_factory) -> str:
 
 
 @pytest.mark.parametrize(
-    "arguments, expected_errors",
+    "arguments, credentials, expected_errors",
     [
         # lambda-monitored 2.x only supports the Amazon Linux 2023 runtimes. It rejects
         # python3.11 too, so only PYTHON_VERSION_ERROR shows this module does.
         (
             {"python_version": "python3.11"},
+            None,
             [
                 "Invalid value for variable",
                 "var.python_version is",
@@ -327,41 +431,151 @@ def validation_root(tmp_path_factory) -> str:
         # A caller who still passes it, as 5.0.0 callers do, must be told at plan.
         (
             {"role_name": "actions-runner-noble"},
+            None,
             [
                 "Unsupported argument",
                 'An argument named "role_name" is not expected here.',
             ],
         ),
+        # SEC-46: the Lambdas need exactly one way to authenticate to GitHub.
+        ({}, {}, ["Resource precondition failed", CREDENTIALS_NONE_ERROR]),
+        # A KMS pool's Lambdas must not be able to read a token or a PEM.
+        (
+            {},
+            {
+                "github_app_kms_key_arn": KMS_KEY_ARN,
+                "github_app_id": GH_APP_ID,
+                "github_token_secret_arn": TOKEN_SECRET_ARN,
+            },
+            ["Resource precondition failed", CREDENTIALS_KMS_COMBINED_ERROR],
+        ),
+        (
+            {},
+            {
+                "github_app_kms_key_arn": KMS_KEY_ARN,
+                "github_app_id": GH_APP_ID,
+                "github_app_pem_secret_arn": PEM_SECRET_ARN,
+            },
+            ["Resource precondition failed", CREDENTIALS_KMS_COMBINED_ERROR],
+        ),
+        # The App JWT names the App, so App authentication needs its ID.
+        (
+            {},
+            {"github_app_kms_key_arn": KMS_KEY_ARN},
+            ["Resource precondition failed", CREDENTIALS_APP_ID_ERROR],
+        ),
+        (
+            {},
+            {"github_app_pem_secret_arn": PEM_SECRET_ARN},
+            ["Resource precondition failed", CREDENTIALS_APP_ID_ERROR],
+        ),
+        # The Lambdas' kms:Sign grant is on the key ARN, which an alias ARN or a key ID
+        # wouldn't match.
+        (
+            {},
+            {
+                "github_app_kms_key_arn": "arn:aws:kms:us-west-2:123456789012:alias/github-app",
+                "github_app_id": GH_APP_ID,
+            },
+            [
+                "Invalid value for variable",
+                "var.github_app_kms_key_arn is",
+                KMS_KEY_ARN_ERROR,
+            ],
+        ),
+        (
+            {},
+            {
+                "github_app_kms_key_arn": "1234abcd-12ab-34cd-56ef-1234567890ab",
+                "github_app_id": GH_APP_ID,
+            },
+            [
+                "Invalid value for variable",
+                "var.github_app_kms_key_arn is",
+                KMS_KEY_ARN_ERROR,
+            ],
+        ),
     ],
-    ids=["python-3.11", "role-name-removed"],
+    ids=[
+        "python-3.11",
+        "role-name-removed",
+        "no-credentials",
+        "kms-with-token",
+        "kms-with-pem",
+        "kms-without-app-id",
+        "pem-without-app-id",
+        "kms-alias-arn",
+        "kms-key-id",
+    ],
 )
-def test_invalid_input_fails_at_plan(validation_root, arguments, expected_errors):
+def test_invalid_input_fails_at_plan(
+    validation_root, arguments, credentials, expected_errors
+):
     """An argument this module rejects fails at plan, with this module's own error."""
-    _write_validation_root(validation_root, arguments)
-    result = _terraform(["plan", "-input=false", "-no-color"], validation_root)
-    output = result.stdout + result.stderr
-    LOG.info("terraform plan output:\n%s", output)
-    # Terraform wraps diagnostic messages, so compare with whitespace collapsed.
-    flat_output = " ".join(output.split())
+    _write_validation_root(validation_root, arguments, credentials)
+    flat_output = _plan_validation_root(validation_root)
 
-    assert result.returncode != 0, output
     for expected_error in expected_errors:
-        assert expected_error in flat_output, output
+        assert expected_error in flat_output, flat_output
+    # Only the rule under test fires, so each case would fail without its own rule.
+    for other_error in MODULE_INPUT_ERRORS:
+        if other_error not in expected_errors:
+            assert other_error not in flat_output, flat_output
 
 
 @pytest.mark.parametrize(
-    "arguments",
+    "arguments, credentials",
     [
-        {},
-        {"python_version": "python3.13"},
+        ({}, None),
+        ({"python_version": "python3.13"}, None),
+        ({}, {"github_token_secret_arn": TOKEN_SECRET_ARN}),
+        (
+            {},
+            {"github_app_pem_secret_arn": PEM_SECRET_ARN, "github_app_id": GH_APP_ID},
+        ),
+        ({}, {"github_app_kms_key_arn": KMS_KEY_ARN, "github_app_id": GH_APP_ID}),
+        # Multi-Region keys have IDs of another form.
+        (
+            {},
+            {
+                "github_app_kms_key_arn": "arn:aws:kms:us-west-2:123456789012:key/"
+                "mrk-1234abcd12ab34cd56ef1234567890ab",
+                "github_app_id": GH_APP_ID,
+            },
+        ),
+        # A token and a PEM together worked before SEC-46, with the token in use, so they
+        # still do, even without github_app_id.
+        (
+            {},
+            {
+                "github_token_secret_arn": TOKEN_SECRET_ARN,
+                "github_app_pem_secret_arn": PEM_SECRET_ARN,
+            },
+        ),
     ],
-    ids=["defaults", "python-3.13"],
+    ids=[
+        "defaults",
+        "python-3.13",
+        "token",
+        "pem",
+        "kms",
+        "kms-multi-region-key",
+        "token-with-pem",
+    ],
 )
-def test_valid_input_passes_validation(validation_root, arguments):
-    """The defaults and every runtime this module supports are not rejected."""
-    _write_validation_root(validation_root, arguments)
+def test_valid_input_passes_validation(validation_root, arguments, credentials):
+    """The defaults, every runtime and every credential combination this module supports are not rejected."""
+    _write_validation_root(validation_root, arguments, credentials)
     result = _terraform(["validate", "-no-color"], validation_root)
     assert result.returncode == 0, result.stdout + result.stderr
+
+    # terraform validate doesn't evaluate preconditions, so the plan has to show that no
+    # rule rejects the input. It fails only because there are no AWS credentials.
+    flat_output = _plan_validation_root(validation_root)
+    assert "Resource precondition failed" not in flat_output, flat_output
+    assert "Invalid value for variable" not in flat_output, flat_output
+    for module_error in MODULE_INPUT_ERRORS:
+        assert module_error not in flat_output, flat_output
 
 
 # The examples are validated the same way, with no AWS account, against this checkout rather

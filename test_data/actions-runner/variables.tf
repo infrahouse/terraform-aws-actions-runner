@@ -8,6 +8,9 @@ variable "github_token" {
 variable "github_app_pem_secret_arn" {
   default = null
 }
+variable "github_app_kms_key_arn" {
+  default = null
+}
 variable "github_org_name" {}
 variable "github_app_id" {
   default = null
