@@ -57,8 +57,10 @@ trade-offs.
   warm pool is off in this mode.
 - **Autoscaling on idle runners**: the `record_metric` Lambda publishes `BusyRunners` and `IdleRunners` every minute,
   and CloudWatch alarms add or remove `autoscaling_step` instances to keep `idle_runners_target_count` runners idle.
-- **GitHub App or classic token authentication**: `github_app_pem_secret_arn` and `github_app_id`, or
-  `github_token_secret_arn`, read from AWS Secrets Manager.
+- **GitHub App or classic token authentication**: the App's private key in a KMS key it can't leave
+  (`github_app_kms_key_arn`, the Lambdas sign with `kms:Sign`) or in Secrets Manager (`github_app_pem_secret_arn`),
+  with `github_app_id`; or a classic token in Secrets Manager (`github_token_secret_arn`). As a GitHub App, each Lambda
+  asks GitHub for an installation token with only the permissions it needs.
 - **Registration Lambda** on the launch lifecycle hook: it creates a runner registration token and stores it in
   Secrets Manager for the new instance.
 - **Deregistration Lambda** on the termination lifecycle hook, plus a sweep every 30 minutes that removes orphaned
@@ -97,13 +99,217 @@ module "actions_runner" {
 }
 ```
 
-Either `github_token_secret_arn` or `github_app_pem_secret_arn` is required. To authenticate as a GitHub App, set
-`github_app_pem_secret_arn` and `github_app_id` instead of `github_token_secret_arn`.
+Set exactly one GitHub credential. To authenticate as a GitHub App, set `github_app_id` and either
+`github_app_kms_key_arn`, a KMS key that holds the App's private key (recommended, see
+[GitHub App key in KMS](#github-app-key-in-kms)), or `github_app_pem_secret_arn`, a secret that holds it.
+`github_app_kms_key_arn` can't be combined with another credential input. For backward compatibility, a token and a
+PEM secret may be set together; the token is then used.
 
 Puppet configures the runners, and its `profile::github_runner` reads the organization from Hiera
 (`profile::github_runner::url` and `profile::github_runner::org`). Provide them in your Hiera data, for instance in a
 package listed in `packages`, and point `puppet_hiera_config_path` at its `hiera.yaml`, as the
-[examples](examples/) do. They are complete root modules for both kinds of authentication.
+[examples](examples/) do. They are complete root modules for each kind of authentication.
+
+## GitHub App key in KMS
+
+With `github_app_pem_secret_arn`, the GitHub App's private key is a secret, and whoever can read it can copy the key
+and act as the App from anywhere, until the key is deleted on GitHub. With `github_app_kms_key_arn`, the key is
+imported into a KMS key and can't be exported. The module's three Lambdas sign the App's JWT with `kms:Sign`, and
+their roles may sign only with that key and only with `RSASSA_PKCS1_V1_5_SHA_256`. Each Lambda asks GitHub for an
+installation token with only the permissions it needs: the organization's self-hosted runners, read for
+record_metric and write for registration and deregistration.
+
+GitHub generates the App's key and doesn't accept a public key made elsewhere, so the key is imported into KMS, not
+created there. Import it with the commands below, not with Terraform: `aws_kms_external_key` takes the key material
+as an argument, so the App's private key would be stored in the Terraform state. Creating the KMS key, and its key
+policy, in Terraform is fine.
+
+The commands need the AWS CLI v2, `curl` and OpenSSL 3 or later. On macOS, the system `openssl` is LibreSSL, which
+can't wrap the key: install OpenSSL 3 (for instance `brew install openssl@3`) and put it first in `PATH`. Run them in
+bash.
+
+1. **Generate a private key** in the App's settings on GitHub (Private keys → Generate a private key). GitHub
+   downloads it as a PEM file.
+
+2. **Create the KMS key**, in the region and account of the runner pool:
+
+   ```bash
+   aws kms create-key \
+     --key-spec RSA_2048 \
+     --key-usage SIGN_VERIFY \
+     --origin EXTERNAL \
+     --description "Private key of the GitHub App for the actions-runner pools" \
+     --query KeyMetadata.Arn \
+     --output text
+   ```
+
+   It prints the key ARN. The key is in the `PendingImport` state until the next step.
+
+3. **Import the App's key.** Set `KEY_ARN` to the key ARN and `PEM_FILE` to the path of the PEM file, then run:
+
+   <!-- kms-import-key-material -->
+   ```bash
+   (
+     set -euo pipefail
+     umask 077
+     region=$(printf '%s' "$KEY_ARN" | cut -d: -f4)
+     work_dir=$(mktemp -d)
+     trap 'rm -rf "$work_dir"' EXIT
+     cd "$work_dir"
+
+     # The App's key in PKCS#8 DER, the format KMS imports.
+     openssl pkcs8 -topk8 -nocrypt -inform PEM -outform DER -in "$PEM_FILE" -out key.der
+
+     # A wrapping public key and an import token, valid for 24 hours. An RSA private key is too long to encrypt with
+     # RSA alone, so KMS requires RSA_AES_KEY_WRAP_SHA_256 for it.
+     parameters=$(
+       aws kms get-parameters-for-import --region "$region" --key-id "$KEY_ARN" \
+         --wrapping-algorithm RSA_AES_KEY_WRAP_SHA_256 --wrapping-key-spec RSA_4096 \
+         --query '[ImportToken, PublicKey]' --output text
+     )
+     printf '%s' "$parameters" | cut -f1 | openssl enc -d -base64 -A -out import-token.bin
+     printf '%s' "$parameters" | cut -f2 | openssl enc -d -base64 -A -out wrapping-key.der
+
+     # Wrap the key with a one-time AES-256 key (AES key wrap with padding, RFC 5649), and encrypt the AES key with the
+     # wrapping public key (RSA-OAEP with SHA-256). KMS takes the encrypted AES key followed by the wrapped key.
+     openssl rand -out aes-key.bin 32
+     openssl enc -id-aes256-wrap-pad -K "$(od -An -tx1 -v aes-key.bin | tr -d ' \n')" -iv A65959A6 \
+       -in key.der -out key-wrapped.bin
+     openssl pkeyutl -encrypt -pubin -keyform DER -inkey wrapping-key.der \
+       -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256 \
+       -in aes-key.bin -out aes-key-encrypted.bin
+     cat aes-key-encrypted.bin key-wrapped.bin > key-material.bin
+
+     aws kms import-key-material --region "$region" --key-id "$KEY_ARN" \
+       --encrypted-key-material fileb://key-material.bin --import-token fileb://import-token.bin \
+       --expiration-model KEY_MATERIAL_DOES_NOT_EXPIRE
+   )
+   ```
+
+   The intermediate files, the PKCS#8 copy of the key among them, stay in a private temporary directory that is
+   deleted at the end. The key is now `Enabled`.
+
+4. **Check the key.** Set `GITHUB_APP_ID` to the App ID, keep `KEY_ARN` and `PEM_FILE`, and run:
+
+   <!-- kms-check-key -->
+   ```bash
+   (
+     set -euo pipefail
+     umask 077
+     region=$(printf '%s' "$KEY_ARN" | cut -d: -f4)
+     work_dir=$(mktemp -d)
+     trap 'rm -rf "$work_dir"' EXIT
+     cd "$work_dir"
+     b64url() { openssl enc -base64 -A | tr '+/' '-_' | tr -d '='; }
+
+     # The KMS key's public key is the App key's.
+     aws kms get-public-key --region "$region" --key-id "$KEY_ARN" --query PublicKey --output text \
+       | openssl enc -d -base64 -A -out kms-public-key.der
+     openssl pkey -in "$PEM_FILE" -pubout -outform DER -out app-public-key.der
+     cmp kms-public-key.der app-public-key.der
+
+     # GitHub accepts a JWT that KMS signed: GET /app returns the App.
+     now=$(date +%s)
+     header=$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)
+     payload=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((now - 60))" "$((now + 540))" "$GITHUB_APP_ID" | b64url)
+     printf '%s.%s' "$header" "$payload" > signing-input.txt
+     signature=$(
+       aws kms sign --region "$region" --key-id "$KEY_ARN" --message fileb://signing-input.txt \
+         --message-type RAW --signing-algorithm RSASSA_PKCS1_V1_5_SHA_256 --query Signature --output text \
+         | openssl enc -d -base64 -A | b64url
+     )
+     printf 'Authorization: Bearer %s.%s.%s\n' "$header" "$payload" "$signature" > headers.txt
+     curl --fail --silent --show-error -H @headers.txt -H 'Accept: application/vnd.github+json' \
+       https://api.github.com/app | grep -o '"slug": *"[^"]*"'
+   )
+   ```
+
+   It prints the App's slug. The JWT is passed to `curl` in a file, so it doesn't show up in the process list.
+
+5. **Configure the pool** with the key ARN and the App ID, and apply:
+
+   ```hcl
+   module "actions_runner" {
+     source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
+     version = "6.0.0"
+     # ...
+     github_app_kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"
+     github_app_id          = 123456
+   }
+   ```
+
+   [examples/github-app-kms](examples/github-app-kms) is a complete root module.
+
+6. **Delete the PEM** once the pool works: the file GitHub downloaded, any copy of it, and, if a pool read it from
+   Secrets Manager before, that secret, once no pool uses it. The key in KMS is now the only copy.
+
+The test suite runs the commands of steps 3 and 4, from this file, on every run of its `kms` case.
+
+**Key policy.** The KMS key needs a key policy that lets the Lambda roles' IAM policies take effect. The default key
+policy, which `create-key` attaches when you pass none, does: it delegates access to IAM, and the module grants each
+Lambda role `kms:Sign` on the key. Then any principal in the account whose IAM policies allow `kms:Sign` on the key
+can sign as the App, an administrator for instance. To allow signing to the pool's Lambdas only, use a key policy
+that keeps key administration for the account and grants `kms:Sign` only to the roles matching the pool's
+`lambda_role_arn_pattern` output, for instance with Terraform after the pool exists:
+
+```hcl
+resource "aws_kms_key_policy" "github_app" {
+  key_id = "arn:aws:kms:us-west-2:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"
+  policy = data.aws_iam_policy_document.github_app_key.json
+}
+
+data "aws_iam_policy_document" "github_app_key" {
+  statement {
+    sid = "KeyAdministration"
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::123456789012:root"]
+    }
+    actions = [
+      "kms:CancelKeyDeletion", "kms:Describe*", "kms:Disable*", "kms:Enable*", "kms:Get*", "kms:List*",
+      "kms:PutKeyPolicy", "kms:ScheduleKeyDeletion", "kms:TagResource", "kms:UntagResource", "kms:Update*",
+    ]
+    resources = ["*"]
+  }
+  statement {
+    sid = "SignAsTheGitHubApp"
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::123456789012:root"]
+    }
+    actions   = ["kms:Sign"]
+    resources = ["*"]
+    condition {
+      test     = "ArnLike"
+      variable = "aws:PrincipalArn"
+      values   = [module.actions_runner.lambda_role_arn_pattern]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "kms:SigningAlgorithm"
+      values   = ["RSASSA_PKCS1_V1_5_SHA_256"]
+    }
+  }
+}
+```
+
+Several pools can share one key: list each pool's `lambda_role_arn_pattern`, or use
+`arn:aws:iam::123456789012:role/actions-runner-lambda-*` for every pool in the account.
+
+**Network.** The registration and deregistration Lambdas run in `lambda_subnet_ids` (by default `subnet_ids`), and
+call KMS from there: those subnets need a NAT gateway or a KMS VPC endpoint (`com.amazonaws.<region>.kms`).
+record_metric runs outside the VPC.
+
+**Rotation.** A GitHub App can have several keys at once, so a rotation has no downtime: generate a new key on
+GitHub, import it into a new KMS key (steps 2 to 4), set `github_app_kms_key_arn` to the new key and apply, then
+delete the old key on GitHub and schedule the old KMS key for deletion. A KMS key with imported asymmetric key
+material holds that key for its whole life: KMS doesn't rotate it, and it can't take another key.
+
+**A lost key.** A KMS key scheduled for deletion can be restored with `aws kms cancel-key-deletion` until the
+pending window ends. After that, the key is gone, and so is the App's key if the PEM was deleted. Deleting the
+imported key material (`aws kms delete-imported-key-material`) loses it the same way, because the KMS key takes back
+only the same key material. Either way, generate a new key on GitHub, import it into a new KMS key and switch the
+pool to it, as for a rotation, and delete the lost key on GitHub.
 
 ## Documentation
 
@@ -275,10 +481,11 @@ The full documentation is on [GitHub Pages](https://infrahouse.github.io/terrafo
 ## Examples
 
 - [examples/github-token](examples/github-token): runners that authenticate with a classic GitHub token
-- [examples/github-app](examples/github-app): runners that authenticate as a GitHub App
+- [examples/github-app-kms](examples/github-app-kms): runners that authenticate as a GitHub App whose key is in KMS
+- [examples/github-app](examples/github-app): runners that authenticate as a GitHub App whose key is in Secrets Manager
 
-Each is a complete root module, and the test suite runs `terraform init` and `terraform validate` on both against this
-checkout. They are based on [test_data/actions-runner](test_data/actions-runner), the root module the integration
+Each is a complete root module, and the test suite runs `terraform init` and `terraform validate` on each against
+this checkout. They are based on [test_data/actions-runner](test_data/actions-runner), the root module the integration
 test deploys. The [Examples](https://infrahouse.github.io/terraform-aws-actions-runner/examples/) page has more
 patterns: spot instances, warm pool sizing, several pools in one account and alarm fan-out.
 

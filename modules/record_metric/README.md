@@ -70,7 +70,9 @@ The Lambda needs to:
 
 ### AWS Permissions
 The Lambda requires:
-- **Secrets Manager:** `GetSecretValue` (GitHub credentials)
+- **Secrets Manager:** `GetSecretValue` (the GitHub token or App key, not with `kms`)
+- **KMS:** with `github_credentials.type = "kms"`, `kms:Sign` on the key only, with
+  `kms:SigningAlgorithm = RSASSA_PKCS1_V1_5_SHA_256`
 - **CloudWatch:** `PutMetricData` (restricted to `GitHubRunners` namespace)
 - **AutoScaling:** `DescribeAutoScalingGroups` (ASG information)
 
@@ -123,8 +125,8 @@ module "record_metric" {
   cloudwatch_log_group_retention = 365
   github_org_name                = "my-org"
   github_credentials = {
-    type   = "token"  # or "pem" for GitHub App
-    secret = "arn:aws:secretsmanager:us-west-2:123456789012:secret:github-token"
+    type = "token" # or "pem" (a secret with the App key), or "kms" (a KMS key with the App key)
+    arn  = "arn:aws:secretsmanager:us-west-2:123456789012:secret:github-token"
   }
   github_app_id   = "123456"  # Required if using GitHub App
   installation_id = "unique-installation-id"
@@ -151,7 +153,7 @@ module "record_metric" {
 | `asg_name` | Autoscaling group name | `string` | - | yes |
 | `alarm_emails` | Email addresses for error notifications | `list(string)` | - | yes |
 | `github_org_name` | GitHub organization name | `string` | - | yes |
-| `github_credentials` | GitHub auth credentials (token or PEM) | `object({type, secret})` | - | yes |
+| `github_credentials` | GitHub token or App key secret, or App key in KMS | `object({type, arn})` | - | yes |
 | `github_app_id` | GitHub App ID (required if using GitHub App) | `string` | - | yes |
 | `installation_id` | Unique identifier for runners | `string` | - | yes |
 | `cloudwatch_log_group_retention` | CloudWatch log retention days | `number` | 365 | no |
@@ -200,16 +202,24 @@ def lambda_handler(event, context):
 - **Not counted:** `runner.status == "offline"` (instance terminated or starting up)
 
 ### GitHub Authentication
-Supports two authentication methods:
+Supports three authentication methods:
 1. **Personal Access Token (PAT):**
    - Set `github_credentials.type = "token"`
    - Token stored in Secrets Manager
 
-2. **GitHub App:**
+2. **GitHub App, key in KMS:**
+   - Set `github_credentials.type = "kms"` and `github_credentials.arn` to the KMS key ARN
+   - The Lambda signs the App JWT with `kms:Sign` and never holds the key
+   - App ID specified in `github_app_id`
+
+3. **GitHub App, key in Secrets Manager:**
    - Set `github_credentials.type = "pem"`
    - PEM key stored in Secrets Manager
    - App ID specified in `github_app_id`
-   - Generates temporary installation tokens (expires in 1 hour)
+
+As a GitHub App, the Lambda gets an installation token (it expires in 1 hour) with one permission: the
+organization's self-hosted runners, read. It gets the token within a five-second `timeout()` and logs how long it
+took.
 
 ## CloudWatch Metrics Usage
 

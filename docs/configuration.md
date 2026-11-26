@@ -15,8 +15,12 @@ Plus one of:
 
 | Variable | Description |
 |----------|-------------|
-| `github_token_secret_arn` | ARN of secret containing GitHub PAT |
+| `github_app_kms_key_arn` + `github_app_id` | ARN of the KMS key with the App's private key, and App ID (recommended) |
 | `github_app_pem_secret_arn` + `github_app_id` | ARN of secret containing GitHub App PEM key and App ID |
+| `github_token_secret_arn` | ARN of secret containing GitHub PAT |
+
+`github_app_kms_key_arn` can't be combined with the others. A token and a PEM secret may be set together, for backward
+compatibility; the token is then used. See [Authentication](authentication.md).
 
 ## Instance Configuration
 
@@ -65,8 +69,9 @@ Plus one of:
 |----------|------|---------|-------------|
 | `github_org_name` | string | required | GitHub organization name |
 | `github_token_secret_arn` | string | `null` | ARN of PAT secret |
+| `github_app_kms_key_arn` | string | `null` | ARN of the KMS key with the App's private key (a key ARN) |
 | `github_app_pem_secret_arn` | string | `null` | ARN of App PEM secret |
-| `github_app_id` | number | `null` | GitHub App ID (required with App PEM) |
+| `github_app_id` | number | `null` | GitHub App ID (required with the App's key, in KMS or in a secret) |
 | `extra_labels` | list(string) | `[]` | Additional runner labels |
 
 ## Puppet Configuration

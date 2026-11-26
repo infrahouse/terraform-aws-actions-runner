@@ -10,7 +10,8 @@ When an EC2 instance launches in the Auto Scaling Group:
 1. An ASG lifecycle hook pauses the instance launch
 2. EventBridge captures the lifecycle event and triggers this Lambda function
 3. The Lambda function:
-   - Retrieves GitHub credentials from AWS Secrets Manager
+   - Gets a GitHub token: a classic token from Secrets Manager, or an installation token of the GitHub App, signed
+     with the App key from Secrets Manager or through `kms:Sign`
    - Obtains a registration token from GitHub API
    - Registers the instance as a self-hosted runner
    - Completes the lifecycle action, allowing the instance to continue launching
@@ -22,9 +23,10 @@ module for standardized monitoring and error alerting.
 
 Before using this module, ensure you have:
 
-1. **GitHub Credentials**: Either a GitHub Personal Access Token (classic) or GitHub App credentials stored in
-   AWS Secrets Manager
-   - For GitHub App: The app must have `administration:write` permission at the organization level
+1. **GitHub Credentials**: a GitHub Personal Access Token (classic) in AWS Secrets Manager, or a GitHub App whose
+   private key is in a KMS key (`github_credentials.type = "kms"`) or in Secrets Manager (`"pem"`)
+   - For GitHub App: the App must have the organization's Self-hosted runners permission, Read & Write. The Lambda's
+     installation tokens get only that permission
    - See the main [terraform-aws-actions-runner](../../README.md) documentation for setup details
 
 2. **VPC Configuration**:
@@ -40,7 +42,8 @@ Before using this module, ensure you have:
 - **Built-in Monitoring**: An error alarm that fires on any failed registration, with SNS alerting
 - **Long Timeout Support**: Default 15-minute timeout to handle slow registrations
 - **Retry Prevention**: Automatic retries disabled to prevent consuming lifecycle hook timeout
-- **Secure Credential Handling**: GitHub credentials retrieved from Secrets Manager at runtime
+- **Secure Credential Handling**: GitHub credentials retrieved at runtime; with `kms`, the Lambda can sign with the
+  App key but can't read it
 
 ## Troubleshooting
 
@@ -49,13 +52,13 @@ Before using this module, ensure you have:
 If you see timeout errors in CloudWatch Logs:
 - Check VPC connectivity - Lambda must reach GitHub API (api.github.com)
 - Verify security groups allow outbound HTTPS (port 443)
-- Consider NAT Gateway or VPC endpoints for AWS services (Secrets Manager, EC2)
+- Consider NAT Gateway or VPC endpoints for AWS services (Secrets Manager, EC2, and KMS with `kms`)
 
 ### Registration Failures
 
 If instances fail to register:
-- Verify GitHub credentials in Secrets Manager are valid
-- Check GitHub App permissions include `administration:write`
+- Verify the GitHub credentials are valid (with `kms`, that the Lambda role may `kms:Sign` with the key)
+- Check the GitHub App has the organization's Self-hosted runners permission, Read & Write
 - Review CloudWatch Logs for detailed error messages
 - Ensure the lifecycle hook timeout (default: 20 minutes) is longer than `lambda_timeout`
 
@@ -124,7 +127,7 @@ If you receive an error alert:
 | <a name="input_asg_name"></a> [asg\_name](#input\_asg\_name) | Autoscaling group name to assign this lambda to. | `string` | n/a | yes |
 | <a name="input_cloudwatch_log_group_retention"></a> [cloudwatch\_log\_group\_retention](#input\_cloudwatch\_log\_group\_retention) | Number of days you want to retain log events in the log group. | `number` | `365` | no |
 | <a name="input_github_app_id"></a> [github\_app\_id](#input\_github\_app\_id) | GitHub App that gives out GitHub tokens for Terraform. For instance, https://github.com/organizations/infrahouse/settings/apps/infrahouse-github-terraform | `string` | n/a | yes |
-| <a name="input_github_credentials"></a> [github\_credentials](#input\_github\_credentials) | A secret and its type to auth in Github. | <pre>object(<br/>    {<br/>      type : string   # Can be either "token" or "pem"<br/>      secret : string # ARN where either is stored<br/>    }<br/>  )</pre> | n/a | yes |
+| <a name="input_github_credentials"></a> [github\_credentials](#input\_github\_credentials) | How the Lambda authenticates to GitHub. type "token": arn is a Secrets Manager secret with a classic GitHub token.<br/>type "pem": arn is a secret with the GitHub App's private key. type "kms": arn is a KMS key with the App's<br/>private key; the Lambda signs the App JWT with kms:Sign and can't read the key. | <pre>object(<br/>    {<br/>      type : string<br/>      arn : string<br/>    }<br/>  )</pre> | n/a | yes |
 | <a name="input_github_org_name"></a> [github\_org\_name](#input\_github\_org\_name) | GitHub organization name. | `string` | n/a | yes |
 | <a name="input_lambda_timeout"></a> [lambda\_timeout](#input\_lambda\_timeout) | Time in seconds to let lambda run. | `number` | `900` | no |
 | <a name="input_python_version"></a> [python\_version](#input\_python\_version) | Python runtime for the Lambda function: python3.12 or python3.13. terraform-aws-lambda-monitored<br/>validates it, because only the Amazon Linux 2023 runtimes can load the manylinux\_2\_28 wheels it installs. | `string` | `"python3.12"` | no |

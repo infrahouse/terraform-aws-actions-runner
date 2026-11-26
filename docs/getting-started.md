@@ -9,7 +9,8 @@ This guide walks you through deploying your first GitHub Actions runner using th
 Before deploying, you need:
 
 1. **VPC with private subnets** — Runners should be in private subnets with NAT gateway access
-2. **Secrets Manager secret** — For GitHub authentication (token or App PEM key)
+2. **A GitHub credential** — The GitHub App's private key in a KMS key (recommended) or in a Secrets Manager
+   secret, or a classic token in a Secrets Manager secret
 
 ### GitHub Setup
 
@@ -21,7 +22,8 @@ Choose one authentication method:
     2. Grant permissions:
         - **Repository**: Actions (read)
         - **Organization**: Self-hosted runners (read/write)
-    3. Generate a private key and store it in AWS Secrets Manager
+    3. Generate a private key and import it into a KMS key (see [Authentication](authentication.md)), or store it
+       in AWS Secrets Manager
     4. Install the App to your organization
 
 === "Personal Access Token"
