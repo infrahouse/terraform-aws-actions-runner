@@ -20,6 +20,7 @@ from tests.conftest import (
     LOG,
     TERRAFORM_ROOT_DIR,
     GITHUB_ORG_NAME,
+    assert_deregistration_token_deletes_runner,
     assert_error_rate_alarm,
     assert_immediate_error_alarm,
     assert_lambda_memory_within_limit,
@@ -253,6 +254,12 @@ def test_module(
                 record_metric_lambda_name,
             ):
                 assert_lambda_memory_within_limit(cloudwatch_client, lambda_name)
+
+            if secret_type == "kms":
+                # The deregistration Lambda deletes a runner only when its instance is gone,
+                # which a test run may not get to. A token minted as that Lambda mints it
+                # deletes one runner here, so the down-scoped permission covers that call too.
+                assert_deregistration_token_deletes_runner(boto3_session, kms_key_arn)
         finally:
             if not keep_after:
 
