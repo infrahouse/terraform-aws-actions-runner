@@ -1,4 +1,4 @@
-infrahouse-core ~= 1.0
+infrahouse-core ~= 1.4
 
 # Security floor for a transitive dependency (pulled in via infrahouse-core ->
 # PyGithub -> PyJWT). cryptography wheels < 48.0.1 statically link a vulnerable

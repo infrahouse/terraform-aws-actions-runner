@@ -1,7 +1,15 @@
 import logging
 from os import environ
+from typing import Optional
 
-from infrahouse_core.github import get_tmp_token, GitHubActions, GitHubAuth
+from infrahouse_core.github import (
+    GitHubActions,
+    GitHubAppTokenSource,
+    GitHubAuth,
+    GitHubTokenSource,
+    KMSSigner,
+    PEMSecretSigner,
+)
 
 from botocore.exceptions import ClientError, BotoCoreError
 from infrahouse_core.aws import get_secret
@@ -22,6 +30,36 @@ _secretsmanager = _session.client("secretsmanager")
 
 HOOK_REGISTRATION = "registration"
 HOOK_BOOTSTRAP = "bootstrap"
+
+# The permissions of the installation token, when the function authenticates as a GitHub App.
+# It lists the organization's runners (read) and requests runner registration tokens (write):
+# both are GitHub's "Self-hosted runners" organization permission.
+GITHUB_TOKEN_PERMISSIONS = {"organization_self_hosted_runners": "write"}
+
+
+def _build_token_source(secret_type: str) -> Optional[GitHubTokenSource]:
+    """
+    Build the GitHub App token source for the credential type Terraform configured.
+
+    :param secret_type: ``GITHUB_SECRET_TYPE``: ``token``, ``pem`` or ``kms``.
+    :return: The token source, or ``None`` for a classic token, which is read from its secret instead.
+    :raises ValueError: If the credential type is unknown.
+    """
+    if secret_type == "token":
+        return None
+    if secret_type == "kms":
+        signer = KMSSigner(environ["GITHUB_APP_KMS_KEY_ARN"], session=_session)
+    elif secret_type == "pem":
+        signer = PEMSecretSigner(environ["GITHUB_SECRET"], session=_session)
+    else:
+        raise ValueError(
+            f"Unknown GITHUB_SECRET_TYPE {secret_type!r}: expected token, pem or kms."
+        )
+    return GitHubAppTokenSource(int(environ["GH_APP_ID"]), signer)
+
+
+# Built once per execution environment, so a warm function reuses the signer and its KMS client.
+_token_source = _build_token_source(environ["GITHUB_SECRET_TYPE"])
 
 
 def lambda_handler(event, context):
@@ -148,9 +186,14 @@ def _handle_bootstrap_hook(
         )
 
 
-def _get_github_token(org):
-    return (
-        get_secret(_secretsmanager, environ["GITHUB_SECRET"])
-        if environ["GITHUB_SECRET_TYPE"] == "token"
-        else get_tmp_token(int(environ["GH_APP_ID"]), environ["GITHUB_SECRET"], org)
-    )
+def _get_github_token(org: str) -> str:
+    """
+    Return a GitHub token for the organization.
+
+    :param org: The GitHub organization.
+    :return: The classic token from its secret, or an installation token of the GitHub App
+        with ``GITHUB_TOKEN_PERMISSIONS``.
+    """
+    if _token_source is None:
+        return get_secret(_secretsmanager, environ["GITHUB_SECRET"])
+    return _token_source.installation_token(org, permissions=GITHUB_TOKEN_PERMISSIONS)
