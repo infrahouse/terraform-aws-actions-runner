@@ -840,60 +840,67 @@ def assert_record_metric_publishes(
     cloudwatch_client: BaseClient,
     asg_name: str,
     function_name: str,
-    minutes: int = 10,
+    runs: int = 3,
+    wait_timeout: int = 600,
 ) -> None:
     """
-    Fail unless record_metric published both runner metrics and ran without errors lately.
+    Wait for record_metric to run a few times, and fail if a run failed or didn't publish both runner metrics.
 
-    The window is the last few minutes, long after the apply: a Lambda can fail in its first
-    minute, before IAM has propagated its new role's policies.
+    Terraform creates record_metric after the ASG, so when the runners are online the function
+    has only just started its one run a minute, and a metric takes a minute or two to become
+    queryable. The runs also give ``log_record_metric_token_times`` a cold start and warm ones.
 
     :param cloudwatch_client: Boto3 CloudWatch client.
     :param asg_name: The pool's ASG, the dimension of the runner metrics.
     :param function_name: The record_metric Lambda.
-    :param minutes: How many minutes back to look.
-    :raises AssertionError: If a metric has no datapoint, the Lambda didn't run, or it failed.
+    :param runs: How many runs to wait for.
+    :param wait_timeout: Seconds to wait for them and their metrics.
+    :raises AssertionError: If a run failed.
+    :raises TimeoutError: If the function didn't run ``runs`` times, or didn't publish both
+        metrics on each run, within ``wait_timeout``.
     """
-    end_time = datetime.now(timezone.utc)
-    start_time = end_time - timedelta(minutes=minutes)
+    start_time = datetime.now(timezone.utc) - timedelta(minutes=15)
 
-    def _sum(namespace: str, metric_name: str, dimensions: List[Dict]) -> List[float]:
-        return [
-            datapoint["Sum"]
+    def _total(
+        namespace: str, metric_name: str, dimensions: List[Dict], statistic: str
+    ) -> float:
+        return sum(
+            datapoint[statistic]
             for datapoint in cloudwatch_client.get_metric_statistics(
                 Namespace=namespace,
                 MetricName=metric_name,
                 Dimensions=dimensions,
                 StartTime=start_time,
-                EndTime=end_time,
+                EndTime=datetime.now(timezone.utc),
                 Period=60,
-                Statistics=["Sum"],
+                Statistics=[statistic],
             )["Datapoints"]
-        ]
-
-    for metric_name in ("BusyRunners", "IdleRunners"):
-        datapoints = _sum(
-            "GitHubRunners", metric_name, [{"Name": "asg_name", "Value": asg_name}]
         )
-        LOG.info(
-            "%s: %d datapoints in %d minutes", metric_name, len(datapoints), minutes
-        )
-        assert (
-            datapoints
-        ), f"record_metric published no {metric_name} for {asg_name} in {minutes} minutes."
 
     function = [{"Name": "FunctionName", "Value": function_name}]
-    invocations = sum(_sum("AWS/Lambda", "Invocations", function))
-    errors = sum(_sum("AWS/Lambda", "Errors", function))
-    LOG.info(
-        "%s: %d invocations, %d errors in %d minutes",
-        function_name,
-        invocations,
-        errors,
-        minutes,
-    )
-    assert invocations > 0, f"{function_name} didn't run in {minutes} minutes."
-    assert errors == 0, f"{function_name} failed {errors} times in {minutes} minutes."
+    pool = [{"Name": "asg_name", "Value": asg_name}]
+    with timeout(wait_timeout):
+        while True:
+            invocations = _total("AWS/Lambda", "Invocations", function, "Sum")
+            errors = _total("AWS/Lambda", "Errors", function, "Sum")
+            published = {
+                metric_name: _total("GitHubRunners", metric_name, pool, "SampleCount")
+                for metric_name in ("BusyRunners", "IdleRunners")
+            }
+            LOG.info(
+                "%s since %s: %d invocations, %d errors, published %s",
+                function_name,
+                start_time.isoformat(timespec="seconds"),
+                invocations,
+                errors,
+                published,
+            )
+            assert (
+                errors == 0
+            ), f"{function_name} failed {errors:.0f} times since {start_time}."
+            if invocations >= runs and min(published.values()) >= runs:
+                return
+            sleep(30)
 
 
 def log_record_metric_token_times(
