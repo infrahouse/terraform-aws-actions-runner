@@ -22,7 +22,31 @@ module "actions_runner" {
 }
 ```
 
-## GitHub App Authentication
+## GitHub App Authentication, Key in KMS
+
+The recommended way to authenticate: the App's private key is imported into a KMS key that can't export it, and the
+Lambdas sign with `kms:Sign`.
+
+```hcl
+module "actions_runner" {
+  source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
+  version = "6.0.0"
+
+  environment     = "production"
+  github_org_name = "your-org"
+  subnet_ids      = module.service_network.subnet_private_ids
+  alarm_emails    = ["oncall@example.com"]
+
+  github_app_kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"
+  github_app_id          = 123456
+}
+```
+
+See [Authentication](authentication.md) for how to import the App's key, and
+[examples/github-app-kms](https://github.com/infrahouse/terraform-aws-actions-runner/tree/main/examples/github-app-kms)
+for a complete root module.
+
+## GitHub App Authentication, Key in Secrets Manager
 
 Preferred over classic tokens — App credentials scope cleanly to the org and rotate automatically.
 

@@ -64,7 +64,7 @@ reasonable cleanup SLA.
 ### VPC Configuration
 The Lambda **must run in VPC subnets with NAT Gateway** or VPC Endpoints because it needs to:
 - Call SSM to stop the actions-runner service
-- Call Secrets Manager for GitHub credentials and token cleanup
+- Call Secrets Manager for the GitHub credential (or KMS, to sign as the GitHub App) and token cleanup
 - Call EC2 APIs to check instance states
 - Call AutoScaling APIs to complete lifecycle actions
 - Call GitHub APIs to deregister runners
@@ -76,7 +76,10 @@ The Lambda requires extensive AWS permissions:
 - **AutoScaling:** `CompleteLifecycleAction`, `Describe*` (ASG, instances, warm pool)
 - **EC2:** `DescribeInstances`, `DescribeTags`
 - **SSM:** `SendCommand`, `GetCommandInvocation`
-- **Secrets Manager:** `GetSecretValue` (GitHub credentials), `DeleteSecret`, `DescribeSecret` (registration tokens)
+- **Secrets Manager:** `GetSecretValue` (the GitHub token or App key, not with `kms`), `DeleteSecret`,
+  `DescribeSecret` (registration tokens)
+- **KMS:** with `github_credentials.type = "kms"`, `kms:Sign` on the key only, with
+  `kms:SigningAlgorithm = RSASSA_PKCS1_V1_5_SHA_256`
 
 ## Architecture
 
@@ -132,8 +135,8 @@ module "deregistration" {
   cloudwatch_log_group_retention = 365
   github_org_name                = "my-org"
   github_credentials = {
-    type   = "token"  # or "pem"
-    secret = "arn:aws:secretsmanager:us-west-2:123456789012:secret:github-token"
+    type = "token" # or "pem" (a secret with the App key), or "kms" (a KMS key with the App key)
+    arn  = "arn:aws:secretsmanager:us-west-2:123456789012:secret:github-token"
   }
   github_app_id                    = "123456"
   registration_token_secret_prefix = "github-runner-token"
@@ -165,7 +168,7 @@ module "deregistration" {
 | `asg_name` | Autoscaling group name | `string` | - | yes |
 | `alarm_emails` | Email addresses for error notifications | `list(string)` | - | yes |
 | `github_org_name` | GitHub organization name | `string` | - | yes |
-| `github_credentials` | GitHub auth credentials (token or PEM) | `object({type, secret})` | - | yes |
+| `github_credentials` | GitHub token or App key secret, or App key in KMS | `object({type, arn})` | - | yes |
 | `github_app_id` | GitHub App ID | `string` | - | yes |
 | `installation_id` | Unique identifier for runners | `string` | - | yes |
 | `registration_token_secret_prefix` | Prefix for registration token secrets | `string` | - | yes |

@@ -57,8 +57,10 @@ There are several community modules for GitHub Actions runners on AWS. Here's wh
   warm pool is off in this mode.
 - **Autoscaling on idle runners**: the `record_metric` Lambda publishes `BusyRunners` and `IdleRunners` every minute,
   and CloudWatch alarms add or remove `autoscaling_step` instances to keep `idle_runners_target_count` runners idle.
-- **GitHub App or classic token authentication**: `github_app_pem_secret_arn` and `github_app_id`, or
-  `github_token_secret_arn`, read from AWS Secrets Manager.
+- **GitHub App or classic token authentication**: the App's private key in a KMS key it can't leave
+  (`github_app_kms_key_arn`, the Lambdas sign with `kms:Sign`) or in Secrets Manager (`github_app_pem_secret_arn`),
+  with `github_app_id`; or a classic token in Secrets Manager (`github_token_secret_arn`). As a GitHub App, each Lambda
+  asks GitHub for an installation token with only the permissions it needs.
 - **Registration Lambda** on the launch lifecycle hook: it creates a runner registration token and stores it in
   Secrets Manager for the new instance.
 - **Deregistration Lambda** on the termination lifecycle hook, plus a sweep every 30 minutes that removes orphaned
@@ -96,8 +98,9 @@ module "actions_runner" {
 }
 ```
 
-Either `github_token_secret_arn` or `github_app_pem_secret_arn` is required. To authenticate as a GitHub App, set
-`github_app_pem_secret_arn` and `github_app_id` instead of `github_token_secret_arn`.
+Set exactly one GitHub credential. To authenticate as a GitHub App, set `github_app_id` and either
+`github_app_kms_key_arn`, a KMS key that holds the App's private key (recommended), or `github_app_pem_secret_arn`, a
+secret that holds it. See [Authentication](authentication.md).
 
 Puppet configures the runners, and its `profile::github_runner` reads the organization from Hiera
 (`profile::github_runner::url` and `profile::github_runner::org`). Provide them in your Hiera data, for instance in a

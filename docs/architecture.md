@@ -25,7 +25,8 @@ Three Lambda functions manage the runner lifecycle:
 
 Triggered by ASG lifecycle hook when an instance launches:
 
-1. Retrieves GitHub credentials from Secrets Manager
+1. Gets a GitHub token: a classic token from Secrets Manager, or a GitHub App installation token, signed with the
+   App's key through `kms:Sign` or with the key from Secrets Manager
 2. Generates a runner registration token
 3. Stores token in Secrets Manager for the instance to retrieve
 4. Completes the lifecycle hook
@@ -189,6 +190,10 @@ Each Lambda has scoped permissions:
 - Registration: Secrets Manager write, GitHub API
 - Deregistration: SSM commands, Secrets Manager delete, GitHub API
 - Record Metric: GitHub API read, CloudWatch put metric
+
+Each reads the GitHub credential from its secret, or, with `github_app_kms_key_arn`, may only call `kms:Sign` on the
+key, with `RSASSA_PKCS1_V1_5_SHA_256`. As a GitHub App, each asks GitHub for an installation token with the
+organization's self-hosted runners permission only: write for registration and deregistration, read for record_metric.
 
 ### IAM Role Naming
 
