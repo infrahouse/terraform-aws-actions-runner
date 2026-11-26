@@ -5,6 +5,7 @@ import platform
 import re
 import subprocess
 import sys
+from dataclasses import dataclass
 from os import path as osp, remove
 from pathlib import Path
 from shutil import copytree, ignore_patterns, rmtree
@@ -324,6 +325,37 @@ KMS_KEY_ARN = (
 DEFAULT_CREDENTIALS = {"github_token_secret_arn": "placeholder"}
 
 
+# An AWS provider that configures with no AWS account. Without credentials the provider fails
+# to configure, and Terraform stops before it expands any count or for_each that needs it.
+# With these, every AWS call is refused (401), after Terraform has expanded them.
+DUMMY_AWS_PROVIDER = [
+    'provider "aws" {',
+    '  region                      = "us-west-2"',
+    '  access_key                  = "dummy"',
+    '  secret_key                  = "dummy"',
+    "  skip_credentials_validation = true",
+    "  skip_requesting_account_id  = true",
+    "  skip_metadata_api_check     = true",
+    "  max_retries                 = 1",
+    "}",
+]
+
+
+@dataclass(frozen=True)
+class KnownAfterApply:
+    """
+    A module argument whose value Terraform learns only at apply.
+
+    That is what a caller passes when it creates the credential in the same apply, as
+    ``test_data/actions-runner`` creates its token secret. The validation root passes the
+    output of a new ``terraform_data`` resource, which is unknown at plan.
+
+    :param value: The value the argument has after apply.
+    """
+
+    value: str
+
+
 def _terraform(args: List[str], cwd: str) -> subprocess.CompletedProcess:
     """
     Run terraform in ``cwd`` with no AWS credentials or configuration available.
@@ -356,6 +388,7 @@ def _write_validation_root(
     root_dir: str,
     arguments: Dict[str, Any],
     credentials: Optional[Dict[str, Any]] = None,
+    dummy_aws_provider: bool = False,
 ) -> None:
     """
     Write a root module that calls this module with the given arguments as literals.
@@ -367,11 +400,15 @@ def _write_validation_root(
     :param arguments: Module arguments to pass besides the required ones, by name.
         Each value is written as a JSON literal.
     :param credentials: The GitHub credential inputs, by name, written the same way.
-        ``None`` passes ``DEFAULT_CREDENTIALS``, a token secret; ``{}`` passes none.
+        ``None`` passes ``DEFAULT_CREDENTIALS``, a token secret; ``{}`` passes none. A
+        ``KnownAfterApply`` value is passed as the output of a ``terraform_data`` resource.
+    :param dummy_aws_provider: Configure the AWS provider with ``DUMMY_AWS_PROVIDER``, so that
+        the plan gets as far as expanding count and for_each.
     """
     if credentials is None:
         credentials = DEFAULT_CREDENTIALS
-    lines = [
+    lines = list(DUMMY_AWS_PROVIDER) if dummy_aws_provider else []
+    module_lines = [
         'module "actions-runner" {',
         f'  source                  = "{osp.relpath(REPO_ROOT, root_dir)}"',
         '  environment             = "development"',
@@ -379,10 +416,17 @@ def _write_validation_root(
         '  subnet_ids              = ["subnet-placeholder"]',
         '  alarm_emails            = ["placeholder@example.com"]',
     ]
-    lines += [
-        f"  {name} = {json.dumps(value)}"
-        for name, value in {**credentials, **arguments}.items()
-    ]
+    for name, value in {**credentials, **arguments}.items():
+        if isinstance(value, KnownAfterApply):
+            lines += [
+                f'resource "terraform_data" "{name}" {{',
+                f"  input = {json.dumps(value.value)}",
+                "}",
+            ]
+            module_lines.append(f"  {name} = terraform_data.{name}.output")
+        else:
+            module_lines.append(f"  {name} = {json.dumps(value)}")
+    lines += module_lines
     lines.append("}")
     with open(osp.join(root_dir, "main.tf"), "w") as fp:
         fp.write("\n".join(lines) + "\n")
@@ -584,6 +628,37 @@ def test_valid_input_passes_validation(validation_root, arguments, credentials):
     assert "Invalid value for variable" not in flat_output, flat_output
     for module_error in MODULE_INPUT_ERRORS:
         assert module_error not in flat_output, flat_output
+
+
+@pytest.mark.parametrize(
+    "credentials",
+    [
+        {"github_token_secret_arn": KnownAfterApply(TOKEN_SECRET_ARN)},
+        {
+            "github_app_pem_secret_arn": KnownAfterApply(PEM_SECRET_ARN),
+            "github_app_id": GH_APP_ID,
+        },
+        {
+            "github_app_kms_key_arn": KnownAfterApply(KMS_KEY_ARN),
+            "github_app_id": GH_APP_ID,
+        },
+    ],
+    ids=["token", "pem", "kms"],
+)
+def test_credential_known_after_apply_plans(validation_root, credentials):
+    """
+    A credential created in the same apply, so known only then, doesn't stop the plan.
+
+    ``test_data/actions-runner`` creates its token secret with the pool, as a caller may. No
+    count or for_each may depend on the credential's ARN or on the type derived from it.
+    """
+    _write_validation_root(validation_root, {}, credentials, dummy_aws_provider=True)
+    flat_output = _plan_validation_root(validation_root)
+    # The provider configured, so the plan got past expanding count and for_each.
+    assert "Invalid provider configuration" not in flat_output, flat_output
+    assert "Invalid count argument" not in flat_output, flat_output
+    assert "Invalid for_each argument" not in flat_output, flat_output
+    assert "Resource precondition failed" not in flat_output, flat_output
 
 
 # The examples are validated the same way, with no AWS account, against this checkout rather
