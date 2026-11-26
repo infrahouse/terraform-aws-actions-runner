@@ -220,8 +220,9 @@ def test_module(
             lambda_client = boto3_session.client("lambda", region_name=aws_region)
             invoke_deregistration_sweep(lambda_client, deregistration_lambda_name)
 
-            # record_metric runs every minute: by now it has published the runner counts that
-            # drive autoscaling, with the token it gets under a five-second timeout.
+            # record_metric publishes the runner counts that drive autoscaling, with the token it
+            # gets under a five-second timeout. Terraform creates it after the ASG, so it has only
+            # just started to run every minute: wait for a few runs.
             assert_record_metric_publishes(
                 cloudwatch_client, asg_name, record_metric_lambda_name
             )
