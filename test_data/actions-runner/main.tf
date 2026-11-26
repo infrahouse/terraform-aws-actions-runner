@@ -15,6 +15,7 @@ module "actions-runner" {
   environment               = local.environment
   github_org_name           = var.github_org_name
   github_app_pem_secret_arn = var.github_app_pem_secret_arn
+  github_app_kms_key_arn    = var.github_app_kms_key_arn
   github_token_secret_arn   = var.github_token != null ? aws_secretsmanager_secret.github_token.arn : null
   puppet_hiera_config_path  = "/opt/infrahouse-puppet-data/environments/${local.environment}/hiera.yaml"
   keypair_name              = aws_key_pair.test.key_name

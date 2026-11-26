@@ -14,6 +14,10 @@ export PRINT_HELP_PYSCRIPT
 TEST_REGION="us-west-2"
 TEST_ROLE="arn:aws:iam::303467602807:role/actions-runner-tester"
 TEST_SELECTOR="token-noble-aws-6"
+# The secret with the test GitHub App's private key, by name, and its region. The kms case of test_module imports it
+# into a new KMS key on every run (SEC-46).
+GITHUB_APP_PEM_SECRET="action-runner-pem-20241116182707976200000001"
+GITHUB_APP_PEM_SECRET_REGION="us-west-1"
 
 help: install-hooks
 	@python -c "$$PRINT_HELP_PYSCRIPT" < Makefile
@@ -33,6 +37,9 @@ test:  ## Run tests on the module
 		pytest -xvvs \
 			--test-role-arn=${TEST_ROLE} \
 			--github-token $(CI_TEST_TOKEN) \
+			--github-app-pem-secret=${GITHUB_APP_PEM_SECRET} \
+			--github-app-pem-secret-region=${GITHUB_APP_PEM_SECRET_REGION} \
+			tests/test_lambdas.py \
 			tests/test_module.py
 
 
@@ -67,6 +74,8 @@ test-keep:  ## Run a test and keep resources
 		--test-role-arn=${TEST_ROLE} \
 		-k $(TEST_SELECTOR) \
 		--github-token $(GITHUB_TOKEN) \
+		--github-app-pem-secret=${GITHUB_APP_PEM_SECRET} \
+		--github-app-pem-secret-region=${GITHUB_APP_PEM_SECRET_REGION} \
 		--keep-after \
 		tests/test_module.py 2>&1 | tee pytest-$(shell date +%Y%m%d-%H%M%S)-output.log
 
@@ -76,6 +85,8 @@ test-clean:  ## Run a test and destroy resources
 		--aws-region=${TEST_REGION} \
 		--test-role-arn=${TEST_ROLE} \
 		--github-token $(GITHUB_TOKEN) \
+		--github-app-pem-secret=${GITHUB_APP_PEM_SECRET} \
+		--github-app-pem-secret-region=${GITHUB_APP_PEM_SECRET_REGION} \
 		-k $(TEST_SELECTOR) \
 		tests/test_module.py 2>&1 | tee pytest-$(shell date +%Y%m%d-%H%M%S)-output.log
 
