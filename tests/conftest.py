@@ -22,7 +22,12 @@ from github import GithubIntegration
 from github.Consts import MAX_JWT_EXPIRY
 from infrahouse_core.aws.asg import ASG
 from infrahouse_core.aws.asg_instance import ASGInstance
-from infrahouse_core.github import GitHubActions, KMSSigner
+from infrahouse_core.github import (
+    GitHubActions,
+    GitHubAppTokenSource,
+    GitHubAuth,
+    KMSSigner,
+)
 from infrahouse_core.logging import setup_logging
 from infrahouse_core.timeout import timeout
 from pytest_infrahouse.plugin import aws_region
@@ -44,6 +49,8 @@ KMS_SIGNING_ALGORITHM = "RSASSA_PKCS1_V1_5_SHA_256"
 # The minimum: a key left over from a run that couldn't clean up goes away in a week.
 KMS_KEY_PENDING_WINDOW_DAYS = 7
 KMS_KEY_FIXTURE_TAG = "infrahouse/terraform-aws-actions-runner/github_app_kms_key_arn"
+# The permissions the registration and deregistration Lambdas ask for.
+WRITE_RUNNERS_PERMISSIONS = {"organization_self_hosted_runners": "write"}
 
 # Role name prefixes from issue #109. A policy that selects principals by role name
 # (e.g. ArnLike on aws:PrincipalArn) relies on these, so the tests check them against
@@ -947,6 +954,41 @@ def log_record_metric_token_times(
             datapoint["Maximum"],
         )
     return times
+
+
+def assert_deregistration_token_deletes_runner(
+    boto3_session, key_arn: str, label: str = "awesome"
+) -> None:
+    """
+    Delete one of the pool's runners with a token minted as the deregistration Lambda mints it.
+
+    The token is the GitHub App's installation token with ``WRITE_RUNNERS_PERMISSIONS``, from a
+    JWT that KMS signed. Listing the runners and deleting one with it shows the permission
+    covers both calls.
+
+    :param boto3_session: Boto3 session for the test account, in the key's region.
+    :param key_arn: The KMS key with the GitHub App's key.
+    :param label: A label of the pool's runners.
+    :raises AssertionError: If there is no runner to delete, or the runner is still registered.
+    """
+    token = GitHubAppTokenSource(
+        GH_APP_ID, KMSSigner(key_arn, session=boto3_session)
+    ).installation_token(GITHUB_ORG_NAME, permissions=WRITE_RUNNERS_PERMISSIONS)
+    gha = GitHubActions(GitHubAuth(token, GITHUB_ORG_NAME))
+    runner = next(
+        (runner for runner in gha.find_runners_by_label(label) if not runner.busy),
+        None,
+    )
+    assert runner, f"No idle runner labeled {label} to delete."
+    LOG.info(
+        "Deleting runner %s with a token scoped to %s",
+        runner.name,
+        WRITE_RUNNERS_PERMISSIONS,
+    )
+    gha.deregister_runner(runner)
+    assert (
+        gha.find_runner_by_label(f"instance_id:{runner.instance_id}") is None
+    ), f"Runner {runner.name} is still registered after its deletion."
 
 
 def invoke_deregistration_sweep(
