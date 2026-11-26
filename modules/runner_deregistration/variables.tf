@@ -40,13 +40,21 @@ variable "github_org_name" {
 }
 
 variable "github_credentials" {
-  description = "A secret and its type to auth in Github."
+  description = <<-EOT
+    How the Lambda authenticates to GitHub. type "token": arn is a Secrets Manager secret with a classic GitHub token.
+    type "pem": arn is a secret with the GitHub App's private key. type "kms": arn is a KMS key with the App's
+    private key; the Lambda signs the App JWT with kms:Sign and can't read the key.
+  EOT
   type = object(
     {
-      type : string   # Can be either "token" or "pem"
-      secret : string # ARN where either is stored
+      type : string
+      arn : string
     }
   )
+  validation {
+    condition     = contains(["token", "pem", "kms"], var.github_credentials.type)
+    error_message = "github_credentials.type must be token, pem or kms. Got: ${jsonencode(var.github_credentials.type)}"
+  }
 }
 
 variable "github_app_id" {

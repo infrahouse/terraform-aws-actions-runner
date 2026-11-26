@@ -266,12 +266,9 @@ module "record_metric" {
   python_version                 = var.python_version
   role_name_prefix               = local.record_metric_role_name_prefix
 
-  github_org_name = var.github_org_name
-  github_credentials = {
-    type : var.github_token_secret_arn != null ? "token" : "pem"
-    secret : var.github_token_secret_arn != null ? var.github_token_secret_arn : var.github_app_pem_secret_arn
-  }
-  github_app_id = var.github_app_id
+  github_org_name    = var.github_org_name
+  github_credentials = local.github_credentials
+  github_app_id      = var.github_app_id
 
   alarm_emails         = var.alarm_emails
   error_rate_threshold = var.error_rate_threshold

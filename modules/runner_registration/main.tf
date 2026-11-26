@@ -1,6 +1,13 @@
 # Local values needed for IAM policy
 locals {
   asg_arn = "arn:aws:autoscaling:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:autoScalingGroup:*:autoScalingGroupName/${var.asg_name}"
+
+  # A KMS key's ARN goes into its own variable, so a kms Lambda is given no secret ARN.
+  github_credential_environment = var.github_credentials.type == "kms" ? {
+    GITHUB_APP_KMS_KEY_ARN = var.github_credentials.arn
+    } : {
+    GITHUB_SECRET = var.github_credentials.arn
+  }
 }
 
 # Custom IAM policy for runner_registration lambda
@@ -52,11 +59,30 @@ data "aws_iam_policy_document" "runner_registration_permissions" {
       "arn:aws:ec2:*:${data.aws_caller_identity.current.account_id}:instance/*"
     ]
   }
-  statement {
-    actions = [
-      "secretsmanager:GetSecretValue"
-    ]
-    resources = [var.github_credentials.secret]
+  # The GitHub credential: read the token or PEM secret, or sign with the KMS key, never both (SEC-46).
+  dynamic "statement" {
+    for_each = var.github_credentials.type == "kms" ? [] : [var.github_credentials.arn]
+    content {
+      actions = [
+        "secretsmanager:GetSecretValue"
+      ]
+      resources = [statement.value]
+    }
+  }
+  dynamic "statement" {
+    for_each = var.github_credentials.type == "kms" ? [var.github_credentials.arn] : []
+    content {
+      actions = [
+        "kms:Sign"
+      ]
+      resources = [statement.value]
+      # The App JWT is RS256, so the Lambda signs with this algorithm only.
+      condition {
+        test     = "StringEquals"
+        variable = "kms:SigningAlgorithm"
+        values   = ["RSASSA_PKCS1_V1_5_SHA_256"]
+      }
+    }
   }
   statement {
     actions = [
@@ -121,14 +147,16 @@ module "lambda_monitored" {
   lambda_subnet_ids         = var.subnet_ids
   lambda_security_group_ids = var.security_group_ids
 
-  environment_variables = {
-    GITHUB_ORG_NAME                  = var.github_org_name
-    GITHUB_SECRET                    = var.github_credentials.secret
-    GITHUB_SECRET_TYPE               = var.github_credentials.type
-    GH_APP_ID                        = var.github_app_id
-    REGISTRATION_TOKEN_SECRET_PREFIX = var.registration_token_secret_prefix
-    LAMBDA_TIMEOUT                   = var.lambda_timeout
-  }
+  environment_variables = merge(
+    {
+      GITHUB_ORG_NAME                  = var.github_org_name
+      GITHUB_SECRET_TYPE               = var.github_credentials.type
+      GH_APP_ID                        = var.github_app_id
+      REGISTRATION_TOKEN_SECRET_PREFIX = var.registration_token_secret_prefix
+      LAMBDA_TIMEOUT                   = var.lambda_timeout
+    },
+    local.github_credential_environment,
+  )
 
   tags = merge(
     var.tags,
