@@ -38,26 +38,41 @@ GITHUB_TOKEN_PERMISSIONS = {"organization_self_hosted_runners": "write"}
 
 def _build_token_source(secret_type: str) -> Optional[GitHubTokenSource]:
     """
-    Build the GitHub App token source for the credential type Terraform configured.
+    Build the GitHub App token source that lasts for the life of the execution environment.
+
+    Only ``kms`` mode has one: the KMS signer holds no key, so a warm function reuses it and
+    its KMS client. A PEM signer keeps the PEM it reads for its own life, so in ``pem`` mode
+    ``_pem_token_source`` builds a source per token, and an updated secret takes effect on
+    the next token.
 
     :param secret_type: ``GITHUB_SECRET_TYPE``: ``token``, ``pem`` or ``kms``.
-    :return: The token source, or ``None`` for a classic token, which is read from its secret instead.
+    :return: The ``kms`` token source, or ``None`` for ``token`` and ``pem``.
     :raises ValueError: If the credential type is unknown.
     """
-    if secret_type == "token":
-        return None
     if secret_type == "kms":
-        signer = KMSSigner(environ["GITHUB_APP_KMS_KEY_ARN"], session=_session)
-    elif secret_type == "pem":
-        signer = PEMSecretSigner(environ["GITHUB_SECRET"], session=_session)
-    else:
-        raise ValueError(
-            f"Unknown GITHUB_SECRET_TYPE {secret_type!r}: expected token, pem or kms."
+        return GitHubAppTokenSource(
+            int(environ["GH_APP_ID"]),
+            KMSSigner(environ["GITHUB_APP_KMS_KEY_ARN"], session=_session),
         )
-    return GitHubAppTokenSource(int(environ["GH_APP_ID"]), signer)
+    if secret_type in ("token", "pem"):
+        return None
+    raise ValueError(
+        f"Unknown GITHUB_SECRET_TYPE {secret_type!r}: expected token, pem or kms."
+    )
 
 
-# Built once per execution environment, so a warm function reuses the signer and its KMS client.
+def _pem_token_source() -> GitHubTokenSource:
+    """
+    Build a GitHub App token source with a new signer, which reads the PEM secret afresh.
+
+    :return: The token source for one token.
+    """
+    return GitHubAppTokenSource(
+        int(environ["GH_APP_ID"]),
+        PEMSecretSigner(environ["GITHUB_SECRET"], session=_session),
+    )
+
+
 _token_source = _build_token_source(environ["GITHUB_SECRET_TYPE"])
 
 
@@ -172,9 +187,11 @@ def _get_github_token(org: str) -> str:
     :return: The classic token from its secret, or an installation token of the GitHub App
         with ``GITHUB_TOKEN_PERMISSIONS``.
     """
-    if _token_source is None:
+    secret_type = environ["GITHUB_SECRET_TYPE"]
+    if secret_type == "token":
         return get_secret(_secretsmanager, environ["GITHUB_SECRET"])
-    return _token_source.installation_token(org, permissions=GITHUB_TOKEN_PERMISSIONS)
+    token_source = _pem_token_source() if secret_type == "pem" else _token_source
+    return token_source.installation_token(org, permissions=GITHUB_TOKEN_PERMISSIONS)
 
 
 def _clean_runners(gha: GitHubActions, installation_id: str):

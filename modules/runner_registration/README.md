@@ -56,6 +56,10 @@ If you see timeout errors in CloudWatch Logs:
 
 ### Registration Failures
 
+When the function can't get a GitHub token on the registration hook (for example `kms:Sign` is denied, KMS is
+unreachable, or GitHub refuses the App's JWT), it completes the lifecycle action with `ABANDON` at once, so the ASG
+replaces the instance, and the invocation fails, so the error alarm fires.
+
 If instances fail to register:
 - Verify the GitHub credentials are valid (with `kms`, that the Lambda role may `kms:Sign` with the key)
 - Check the GitHub App has the organization's Self-hosted runners permission, Read & Write

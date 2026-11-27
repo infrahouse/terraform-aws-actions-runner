@@ -169,11 +169,6 @@ aws secretsmanager put-secret-value \
   --secret-string file://new-private-key.pem
 ```
 
-A Lambda reads the key once per execution environment and keeps it, so warm Lambdas go on signing with the old key
-after the update. Keep the old key on GitHub until every Lambda has started afresh: Lambda replaces execution
-environments within hours, and any change to a function's configuration, such as the next `terraform apply` that
-updates it, replaces them at once. Then delete the old key on GitHub.
-
 **Personal Token:**
 ```bash
 # Generate new token in GitHub settings

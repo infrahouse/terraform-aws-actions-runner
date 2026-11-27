@@ -15,8 +15,10 @@ from botocore.exceptions import ClientError, BotoCoreError
 from infrahouse_core.aws import get_secret
 from infrahouse_core.aws.asg import ASG
 from infrahouse_core.aws.asg_instance import ASGInstance
+from infrahouse_core.exceptions import IHCoreException
 import boto3
 from github import GithubException
+import requests
 
 LOG = logging.getLogger()
 LOG.setLevel(level=logging.INFO)
@@ -36,29 +38,58 @@ HOOK_BOOTSTRAP = "bootstrap"
 # both are GitHub's "Self-hosted runners" organization permission.
 GITHUB_TOKEN_PERMISSIONS = {"organization_self_hosted_runners": "write"}
 
+# What getting a GitHub token can raise: an AWS error (Secrets Manager, or kms:Sign denied or
+# unreachable), a missing secret (IHSecretNotFound), GitHub refusing the JWT or the token
+# request (GithubException), an HTTP or network error in the App's installation lookup, or no
+# installation of the App in the organization (RuntimeError).
+GITHUB_TOKEN_ERRORS = (
+    ClientError,
+    BotoCoreError,
+    IHCoreException,
+    GithubException,
+    requests.RequestException,
+    RuntimeError,
+    TimeoutError,
+)
+
 
 def _build_token_source(secret_type: str) -> Optional[GitHubTokenSource]:
     """
-    Build the GitHub App token source for the credential type Terraform configured.
+    Build the GitHub App token source that lasts for the life of the execution environment.
+
+    Only ``kms`` mode has one: the KMS signer holds no key, so a warm function reuses it and
+    its KMS client. A PEM signer keeps the PEM it reads for its own life, so in ``pem`` mode
+    ``_pem_token_source`` builds a source per token, and an updated secret takes effect on
+    the next token.
 
     :param secret_type: ``GITHUB_SECRET_TYPE``: ``token``, ``pem`` or ``kms``.
-    :return: The token source, or ``None`` for a classic token, which is read from its secret instead.
+    :return: The ``kms`` token source, or ``None`` for ``token`` and ``pem``.
     :raises ValueError: If the credential type is unknown.
     """
-    if secret_type == "token":
-        return None
     if secret_type == "kms":
-        signer = KMSSigner(environ["GITHUB_APP_KMS_KEY_ARN"], session=_session)
-    elif secret_type == "pem":
-        signer = PEMSecretSigner(environ["GITHUB_SECRET"], session=_session)
-    else:
-        raise ValueError(
-            f"Unknown GITHUB_SECRET_TYPE {secret_type!r}: expected token, pem or kms."
+        return GitHubAppTokenSource(
+            int(environ["GH_APP_ID"]),
+            KMSSigner(environ["GITHUB_APP_KMS_KEY_ARN"], session=_session),
         )
-    return GitHubAppTokenSource(int(environ["GH_APP_ID"]), signer)
+    if secret_type in ("token", "pem"):
+        return None
+    raise ValueError(
+        f"Unknown GITHUB_SECRET_TYPE {secret_type!r}: expected token, pem or kms."
+    )
 
 
-# Built once per execution environment, so a warm function reuses the signer and its KMS client.
+def _pem_token_source() -> GitHubTokenSource:
+    """
+    Build a GitHub App token source with a new signer, which reads the PEM secret afresh.
+
+    :return: The token source for one token.
+    """
+    return GitHubAppTokenSource(
+        int(environ["GH_APP_ID"]),
+        PEMSecretSigner(environ["GITHUB_SECRET"], session=_session),
+    )
+
+
 _token_source = _build_token_source(environ["GITHUB_SECRET_TYPE"])
 
 
@@ -83,9 +114,11 @@ def lambda_handler(event, context):
     asg_instance = ASGInstance(
         instance_id=event["detail"]["EC2InstanceId"], session=_session
     )
-    github = GitHubAuth(
-        _get_github_token(environ["GITHUB_ORG_NAME"]), environ["GITHUB_ORG_NAME"]
-    )
+    if hook_name == HOOK_REGISTRATION:
+        github_token = _get_github_token_or_abandon(asg_instance, hook_name)
+    else:
+        github_token = _get_github_token(environ["GITHUB_ORG_NAME"])
+    github = GitHubAuth(github_token, environ["GITHUB_ORG_NAME"])
     gha = GitHubActions(github)
 
     if hook_name == HOOK_REGISTRATION:
@@ -112,6 +145,36 @@ def lambda_handler(event, context):
 
     else:
         LOG.info(f"Ignoring hook {hook_name}")
+
+
+def _get_github_token_or_abandon(asg_instance: ASGInstance, hook_name: str) -> str:
+    """
+    Return a GitHub token for the registration hook, or abandon the instance's lifecycle action.
+
+    Without a token the instance can't register, so the action is completed with ``ABANDON``
+    at once instead of waiting out the hook's heartbeat. The error is then re-raised: the
+    invocation fails, and the function's error alarm fires.
+
+    :param asg_instance: The instance the lifecycle action is for.
+    :param hook_name: The lifecycle hook's name.
+    :return: The GitHub token.
+    :raises Exception: What getting the token raised, one of ``GITHUB_TOKEN_ERRORS``.
+    """
+    try:
+        return _get_github_token(environ["GITHUB_ORG_NAME"])
+    except GITHUB_TOKEN_ERRORS as err:
+        LOG.error(
+            "Couldn't get a GitHub token: %s. Abandoning lifecycle hook %s for %s.",
+            err,
+            hook_name,
+            asg_instance.instance_id,
+        )
+        ASG(asg_name=asg_instance.asg_name, session=_session).complete_lifecycle_action(
+            hook_name=hook_name,
+            result="ABANDON",
+            instance_id=asg_instance.instance_id,
+        )
+        raise
 
 
 def _handle_registration_hook(
@@ -194,6 +257,8 @@ def _get_github_token(org: str) -> str:
     :return: The classic token from its secret, or an installation token of the GitHub App
         with ``GITHUB_TOKEN_PERMISSIONS``.
     """
-    if _token_source is None:
+    secret_type = environ["GITHUB_SECRET_TYPE"]
+    if secret_type == "token":
         return get_secret(_secretsmanager, environ["GITHUB_SECRET"])
-    return _token_source.installation_token(org, permissions=GITHUB_TOKEN_PERMISSIONS)
+    token_source = _pem_token_source() if secret_type == "pem" else _token_source
+    return token_source.installation_token(org, permissions=GITHUB_TOKEN_PERMISSIONS)
