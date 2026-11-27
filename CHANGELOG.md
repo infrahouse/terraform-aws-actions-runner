@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
+## [6.1.0] - 2026-11-27
+
+### Bug Fixes
+
+- Let the runner_deregistration error alarm fire: 30-minute periods, 2 of 2 ([#91](https://github.com/infrahouse/terraform-aws-actions-runner/issues/91))
+- Alarm on any runner_registration error; its alarm is renamed from -errors-threshold to -errors-immediate ([#91](https://github.com/infrahouse/terraform-aws-actions-runner/issues/91))
+- Plan when the credential is created in the same apply (SEC-46)
+- Abandon the registration hook without a token, and read the PEM per token (SEC-46)
+
+### Documentation
+
+- Publish CHANGELOG.md on the docs site as the Changelog page ([#79](https://github.com/infrahouse/terraform-aws-actions-runner/issues/79))
+- Move the README's 4.0.0, 3.1.0 and earlier upgrade notes to docs/upgrading.md ([#79](https://github.com/infrahouse/terraform-aws-actions-runner/issues/79))
+- Add GitHub token and GitHub App examples ([#79](https://github.com/infrahouse/terraform-aws-actions-runner/issues/79))
+- Give docs/index.md the README's features and quick start ([#79](https://github.com/infrahouse/terraform-aws-actions-runner/issues/79))
+- Restructure the README to the module requirements ([#79](https://github.com/infrahouse/terraform-aws-actions-runner/issues/79))
+- Pin the runner_deregistration migration guide to 3.1.1, the first published release with it ([#79](https://github.com/infrahouse/terraform-aws-actions-runner/issues/79))
+- Explain each Lambda's error alarm and the registration alarm rename ([#91](https://github.com/infrahouse/terraform-aws-actions-runner/issues/91))
+- Say which Lambda error alarms error_rate_threshold drives ([#91](https://github.com/infrahouse/terraform-aws-actions-runner/issues/91))
+- Pin the module snippets in the Pages docs to 6.0.0 ([#79](https://github.com/infrahouse/terraform-aws-actions-runner/issues/79))
+- Say scaled-in runners are terminated, not returned to the warm pool ([#79](https://github.com/infrahouse/terraform-aws-actions-runner/issues/79))
+- Document the GitHub App key in KMS, with the import runbook and an example (SEC-46)
+
+### Features
+
+- Add the github_app_kms_key_arn input and check the GitHub credential inputs at plan (SEC-46)
+- Sign the GitHub App JWT in KMS and ask for down-scoped tokens in the Lambdas (SEC-46)
+
+### Styling
+
+- Keep the runner_deregistration EventBridge rule under 120-character lines ([#91](https://github.com/infrahouse/terraform-aws-actions-runner/issues/91))
+
+### Testing
+
+- Validate every example against this checkout, with no AWS account ([#79](https://github.com/infrahouse/terraform-aws-actions-runner/issues/79))
+- Add type hints to the examples tests ([#79](https://github.com/infrahouse/terraform-aws-actions-runner/issues/79))
+- Check each Lambda's error alarm configuration after apply ([#91](https://github.com/infrahouse/terraform-aws-actions-runner/issues/91))
+- Type-hint the alarm helpers' CloudWatch client and report the values a failed check got ([#91](https://github.com/infrahouse/terraform-aws-actions-runner/issues/91))
+- Add the kms case, with a fresh KMS key imported by the README's commands (SEC-46)
+- Delete a runner with the deregistration Lambda's down-scoped token in the kms case (SEC-46)
+- Wait for record_metric's first runs before checking its metrics (SEC-46)
+
 ## [6.0.0] - 2026-11-22
 
 ### Bug Fixes
