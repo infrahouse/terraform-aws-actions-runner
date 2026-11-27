@@ -89,7 +89,7 @@ private key of a GitHub App (see
 ```hcl
 module "actions_runner" {
   source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
-  version = "6.0.0"
+  version = "6.1.0"
 
   environment             = "production"
   github_org_name         = "your-org"
@@ -231,7 +231,7 @@ bash.
    ```hcl
    module "actions_runner" {
      source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
-     version = "6.0.0"
+     version = "6.1.0"
      # ...
      github_app_kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"
      github_app_id          = 123456

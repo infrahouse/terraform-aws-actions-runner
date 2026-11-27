@@ -14,7 +14,7 @@ provider "aws" {
 
 module "actions_runner" {
   source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
-  version = "6.0.0"
+  version = "6.1.0"
 
   environment     = var.environment
   github_org_name = var.github_org_name

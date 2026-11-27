@@ -12,7 +12,7 @@ The smallest viable configuration — a single runner authenticated with a class
 ```hcl
 module "actions_runner" {
   source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
-  version = "6.0.0"
+  version = "6.1.0"
 
   environment             = "production"
   github_org_name         = "your-org"
@@ -30,7 +30,7 @@ Lambdas sign with `kms:Sign`.
 ```hcl
 module "actions_runner" {
   source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
-  version = "6.0.0"
+  version = "6.1.0"
 
   environment     = "production"
   github_org_name = "your-org"
@@ -53,7 +53,7 @@ Preferred over classic tokens — App credentials scope cleanly to the org and r
 ```hcl
 module "actions_runner" {
   source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
-  version = "6.0.0"
+  version = "6.1.0"
 
   environment              = "production"
   github_org_name          = "your-org"
@@ -74,7 +74,7 @@ Use spot for the elastic tail, keep a small on-demand baseline so at least one r
 ```hcl
 module "actions_runner" {
   source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
-  version = "6.0.0"
+  version = "6.1.0"
 
   environment             = "production"
   github_org_name         = "your-org"
@@ -96,7 +96,7 @@ The warm pool keeps hibernated instances ready so newly scheduled jobs don't wai
 ```hcl
 module "actions_runner" {
   source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
-  version = "6.0.0"
+  version = "6.1.0"
 
   environment             = "production"
   github_org_name         = "your-org"
@@ -118,7 +118,7 @@ Add labels so specific workflows can target this runner pool with `runs-on: [sel
 ```hcl
 module "actions_runner_heavy" {
   source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
-  version = "6.0.0"
+  version = "6.1.0"
 
   environment             = "production"
   github_org_name         = "your-org"
@@ -140,7 +140,7 @@ Deploy separate pools for different workload classes by invoking the module mult
 ```hcl
 module "runners_linux_small" {
   source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
-  version = "6.0.0"
+  version = "6.1.0"
 
   environment             = "production"
   github_org_name         = "your-org"
@@ -154,7 +154,7 @@ module "runners_linux_small" {
 
 module "runners_linux_large" {
   source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
-  version = "6.0.0"
+  version = "6.1.0"
 
   environment             = "production"
   github_org_name         = "your-org"
@@ -174,7 +174,7 @@ module "runners_linux_large" {
 ```hcl
 module "actions_runner" {
   source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
-  version = "6.0.0"
+  version = "6.1.0"
 
   environment             = "production"
   github_org_name         = "your-org"

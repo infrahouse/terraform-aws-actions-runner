@@ -194,7 +194,7 @@ allowed_drain_time = 900
 ```hcl
 module "actions-runner" {
   source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
-  version = "6.0.0"
+  version = "6.1.0"
 
   environment     = "production"
   github_org_name = "my-org"
@@ -223,7 +223,7 @@ module "actions-runner" {
 ```hcl
 module "actions-runner" {
   source  = "registry.infrahouse.com/infrahouse/actions-runner/aws"
-  version = "6.0.0"
+  version = "6.1.0"
 
   environment     = "development"
   github_org_name = "my-org"
